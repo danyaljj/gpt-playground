@@ -50,28 +50,26 @@ model = GPT2LMHeadModel.from_pretrained(model_size, output_hidden_states=True)
 model.to('cuda')
 model.eval()
 
-input_ids = tokenizer.encode(" was found in a field.", return_tensors="pt").to('cuda')
+right_context_ids = tokenizer.encode(" was found in a field.", return_tensors="pt").to('cuda')
 # input_ids_one_hot = one_hot(input_ids, dimension=tokenizer.vocab_size)
-# assert input_ids.size() == 2, f"sizes don't match {input_ids.size()} ({input_ids}) vs 2"
-phrase_length = input_ids.size()[1]  # the length of the provided phrase
+phrase_length = right_context_ids.size()[1]  # the length of the provided phrase
 assert phrase_length > 2, "the provided sentence is a bit too short . . .  "
 assert phrase_length < 20, "the provided sentence is a bit too long . . .  "
 
 # the logits of the word that we want to predict
 # since it's a single token, the size is [num-batches x num-tokens x VOCAB]
 prefix_length = 2
-batch_size = 256
-if True:
+batch_size = 8
+if False:
     # uniform distribution over all the vocab
     optimized_logits = torch.nn.Parameter(
-        -torch.log(torch.rand([batch_size, prefix_length, tokenizer.vocab_size], device='cuda') / tokenizer.vocab_size)
+        torch.rand([batch_size, prefix_length, tokenizer.vocab_size], device='cuda')
     )
 else:
-    optimized_logits = torch.ones([1, prefix_length, tokenizer.vocab_size], device='cuda') * -10.0
+    optimized_logits = torch.ones([batch_size, prefix_length, tokenizer.vocab_size], device='cuda') * -10.0
     perfect_prompt = tokenizer.encode("The dog", return_tensors="pt")
     for position_id, word_id in enumerate(perfect_prompt[0]):
-        optimized_logits[0, position_id, word_id] = 0
-    print(torch.sum(optimized_logits))
+        optimized_logits[:, position_id, word_id] = 0
     optimized_logits = torch.nn.Parameter(optimized_logits)
 
 lr = 0.05
@@ -80,13 +78,6 @@ optim = torch.optim.Adam([optimized_logits], lr=lr)
 scheduler = torch.optim.lr_scheduler.StepLR(optimizer=optim, step_size=step_size)
 temperature = 0.01
 length = prefix_length + phrase_length
-
-# TODO:
-#  - start from the perfect prompt
-#  - the issue might be that GPT2 is trained on discrete prompts
-#       - in which case, maybe I should try argmax instead of soft distribution
-#  - add a regularization term (entropy, instead of temperature) to force the logits towards more one-hot
-
 
 for iter in range(1000):
     past = None
@@ -104,26 +95,27 @@ for iter in range(1000):
         logits_so_far = logits if logits_so_far is None else torch.cat((logits_so_far, logits), dim=1)
         inputs_embeds = embed_inputs(model.get_input_embeddings(), logits, device='cuda')
 
+    # convert logits to probabilities
     probs_so_far = F.softmax(logits_so_far, dim=2)
-
-    # compute loss with respect to the ending
-    # TODO: if the gold prediction is not in top-k (e.g., k == 1), punish bigly
-    # _dist = nn.CrossEntropyLoss()(torch.log(probs_so_far)[:, :, :], input_ids[:, :].repeat(batch_size, 1, 1))
-    _dist = nn.CrossEntropyLoss()(torch.transpose(probs_so_far, 1, 2), input_ids.repeat(batch_size, 1))
-
     optimized_probs = F.softmax(optimized_logits, dim=2)  # TODO: replace it with logits_to_probs
+
+    # TODO: if the gold prediction is not in top-k (e.g., k == 1), punish bigly
+    # compute loss with respect to the ending
+    _right_context_probs = nn.CrossEntropyLoss()(probs_so_far.view(-1, probs_so_far.size(-1)),
+                                                 right_context_ids.view(-1).repeat(batch_size))
+
+    # TODO: instead of maximizing entropy, maximize the maximum of the probabilty distribution
     # minimize entropy so that we get peaky distributions
     _entropy = -torch.mean(
         # entropy for each position
         torch.sum(torch.log(optimized_probs) * optimized_probs, dim=2)
     )
-    # TODO: instead of maximing entropy, maximize the maximum of the probabilty distribution
 
     # _sum1_loss = torch.norm(torch.sum(optimized_probs, dim=2) - 1.0)
     # _sum1_loss = torch.nn.MSELoss()(torch.exp(optimized_logits), torch.ones(prefix_length))
 
-    w = 0.9
-    _loss = (1 - w) * _entropy + w * _dist  # + _sum1_loss # _dist + +
+    w = 0.99
+    _loss = (1 - w) * _entropy + w * _right_context_probs
     _sum = torch.sum(optimized_probs)
 
     _loss.backward(retain_graph=True)
@@ -153,7 +145,7 @@ for iter in range(1000):
 
     wandb.log({
         "total_loss": _loss.detach().tolist(),
-        "_dist": _dist.detach().tolist(),
+        "_dist": _right_context_probs.detach().tolist(),
         "sum": _sum.detach().tolist(),
         '_entropy': _entropy.detach().tolist(),
         # '_entropy2': _entropy2.detach().tolist(),
