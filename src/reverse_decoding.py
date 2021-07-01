@@ -60,10 +60,11 @@ assert phrase_length < 20, "the provided sentence is a bit too long . . .  "
 # the logits of the word that we want to predict
 # since it's a single token, the size is [num-batches x num-tokens x VOCAB]
 prefix_length = 2
-# uniform distribution over all the vocab
-if False:
+batch_size = 256
+if True:
+    # uniform distribution over all the vocab
     optimized_logits = torch.nn.Parameter(
-        -torch.log(torch.rand([1, prefix_length, tokenizer.vocab_size], device='cuda') / tokenizer.vocab_size)
+        -torch.log(torch.rand([batch_size, prefix_length, tokenizer.vocab_size], device='cuda') / tokenizer.vocab_size)
     )
 else:
     optimized_logits = torch.ones([1, prefix_length, tokenizer.vocab_size], device='cuda') * -10.0
@@ -103,19 +104,20 @@ for iter in range(1000):
         logits_so_far = logits if logits_so_far is None else torch.cat((logits_so_far, logits), dim=1)
         inputs_embeds = embed_inputs(model.get_input_embeddings(), logits, device='cuda')
 
-
     probs_so_far = F.softmax(logits_so_far, dim=2)
 
     # compute loss with respect to the ending
     # TODO: if the gold prediction is not in top-k (e.g., k == 1), punish bigly
-    _dist = nn.CrossEntropyLoss()(probs_so_far[0, :, :], input_ids[0, :])
+    # _dist = nn.CrossEntropyLoss()(torch.log(probs_so_far)[:, :, :], input_ids[:, :].repeat(batch_size, 1, 1))
+    _dist = nn.CrossEntropyLoss()(torch.transpose(probs_so_far, 1, 2), input_ids.repeat(batch_size, 1))
 
-    optimized_probs = F.softmax(optimized_logits, dim=2) # TODO: replace it with logits_to_probs
+    optimized_probs = F.softmax(optimized_logits, dim=2)  # TODO: replace it with logits_to_probs
     # minimize entropy so that we get peaky distributions
     _entropy = -torch.mean(
         # entropy for each position
         torch.sum(torch.log(optimized_probs) * optimized_probs, dim=2)
     )
+    # TODO: instead of maximing entropy, maximize the maximum of the probabilty distribution
 
     # _sum1_loss = torch.norm(torch.sum(optimized_probs, dim=2) - 1.0)
     # _sum1_loss = torch.nn.MSELoss()(torch.exp(optimized_logits), torch.ones(prefix_length))
@@ -140,11 +142,11 @@ for iter in range(1000):
         torch.sum(torch.log(optimized_probs) * optimized_probs, dim=2)
     )
 
-    text, nll, _ = get_text_from_logits(optimized_logits[0, :, :], tokenizer)
-    print(f" * prefix: {text}")
-
-    text, nll, _ = get_text_from_logits(logits_so_far[0, :, :], tokenizer)
-    print(f" * predicted: {text}")
+    print(" - - - - ")
+    for batch_id in range(batch_size):
+        prefix, nll, _ = get_text_from_logits(optimized_logits[batch_id, :, :], tokenizer)
+        predicted, nll, _ = get_text_from_logits(logits_so_far[batch_id, :, :], tokenizer)
+        print(f" * prefix: {prefix} <--> {predicted}")
 
     grad_norms = [p.grad.data.norm(2).tolist() for p in list(filter(lambda p: p.grad is not None, model.parameters()))]
     avg_grad_norm = sum(grad_norms) / len(grad_norms) if len(grad_norms) > 0 else 0.0

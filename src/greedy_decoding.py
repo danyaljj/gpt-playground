@@ -53,7 +53,7 @@ tokenizer = GPT2Tokenizer.from_pretrained(model_size)
 model = GPT2LMHeadModel.from_pretrained(model_size, output_hidden_states=True)
 model.to('cuda')
 model.eval()
-input_ids = tokenizer.encode("The dog", return_tensors="pt").to('cuda')
+input_ids = tokenizer.encode("In order to make an omelette", return_tensors="pt").to('cuda')
 input_one_hot = one_hot(input_ids, dimension=tokenizer.vocab_size)
 
 
