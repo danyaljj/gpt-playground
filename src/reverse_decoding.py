@@ -60,7 +60,7 @@ assert phrase_length < 20, "the provided sentence is a bit too long . . .  "
 # since it's a single token, the size is [num-batches x num-tokens x VOCAB]
 prefix_length = 2
 batch_size = 8
-if False:
+if True:
     # uniform distribution over all the vocab
     optimized_logits = torch.nn.Parameter(
         torch.rand([batch_size, prefix_length, tokenizer.vocab_size], device='cuda')
@@ -72,8 +72,8 @@ else:
         optimized_logits[:, position_id, word_id] = 0
     optimized_logits = torch.nn.Parameter(optimized_logits)
 
-lr = 0.05
-step_size = 20
+lr = 0.00001
+step_size = 1
 optim = torch.optim.Adam([optimized_logits], lr=lr)
 scheduler = torch.optim.lr_scheduler.StepLR(optimizer=optim, step_size=step_size)
 temperature = 0.01
@@ -124,10 +124,11 @@ for iter in range(1000):
     scheduler.step()
 
     # projection step: make the logits more peakier
-    with torch.no_grad():
-        # optimized_probs = F.softmax(100 * optimized_probs, dim=2)
-        # optimized_logits = logits_to_probs(optimized_probs)
-        optimized_logits += 0.01 * torch.randn(optimized_logits.size()).to('cuda')
+    if iter % 50 == 0:
+        with torch.no_grad():
+            # optimized_probs = F.softmax(100 * optimized_probs, dim=2)
+            # optimized_logits = logits_to_probs(optimized_probs)
+            optimized_logits += 0.01 * torch.randn(optimized_logits.size()).to('cuda')
 
     _entropy2 = -torch.mean(
         # entropy for each position
