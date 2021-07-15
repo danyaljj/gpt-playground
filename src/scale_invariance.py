@@ -67,7 +67,6 @@ input_one_hot = one_hot(input_ids, dimension=tokenizer.vocab_size)
 model1_embedding_inv = torch.pinverse(model1.get_input_embeddings().weight)
 transformation_1_to_2_matrix = torch.matmul(model1_embedding_inv, model2.get_input_embeddings().weight)
 
-
 def decode(model, length, temperature, device, prompt_embedding):
     '''
     GPT2 decoding via dense representations (no arg-max)
@@ -92,13 +91,9 @@ def experiment1():
     '''
     In this experiment, we use the embedding matrices of the language models to convert encoded inputs of LM1 to encoded input of LM2
     '''
-    temperature = 0.01
-    print(f" ------- \n * temperature: {temperature}")
+    prompt_embedding1 = torch.matmul(input_one_hot.type(torch.FloatTensor).to('cuda'), model1.get_input_embeddings().weight)
+    prompt_embedding2 = torch.matmul(input_one_hot.type(torch.FloatTensor).to('cuda'), model2.get_input_embeddings().weight)
 
-    prompt_embedding1 = embed_inputs(model1.get_input_embeddings(), input_one_hot.type(torch.FloatTensor) / temperature,
-                                     device='cuda', print_entropy=True)
-    prompt_embedding2 = embed_inputs(model2.get_input_embeddings(), input_one_hot.type(torch.FloatTensor) / temperature,
-                                     device='cuda', print_entropy=True)
     print(" . . . ")
     transformed_prompt_embedding2 = torch.matmul(prompt_embedding1, transformation_1_to_2_matrix)
 
@@ -106,6 +101,7 @@ def experiment1():
     diff = torch.abs(torch.mean(transformed_prompt_embedding2 - prompt_embedding2)).tolist()
     assert diff < 0.01, f'Diff: {diff} - the projection did not work! :-/ '
 
+    temperature = 0.01 # to simulate the effect of arg-max
     logits = decode(model1, 50, temperature, 'cuda', prompt_embedding1)
     text, nll, _ = get_text_from_logits(logits[0, :, :], tokenizer)
     print(f" model 1 output (model 1 embeddings): {text}")
@@ -142,4 +138,4 @@ def experiment2():
 
 
 experiment1()
-experiment2()
+# experiment2()
