@@ -58,7 +58,9 @@ def decode_with_embeddings(model, length, input_one_hot1, temperature, device):
     for i in range(length):
         if past is None:
             # inputs_embeds = model.transformer.wte(input_ids)
-            inputs_embeds1 = embed_inputs(model.get_input_embeddings(), input_one_hot1.type(torch.FloatTensor)/ temperature, device='cuda', print_entropy=True)
+            inputs_embeds1 = embed_inputs(model.get_input_embeddings(),
+                                          input_one_hot1.type(torch.FloatTensor) / temperature, device='cuda',
+                                          print_entropy=True)
         model_outputs = model(past_key_values=past, inputs_embeds=inputs_embeds1)
         logits = model_outputs.logits
         past = model_outputs.past_key_values
@@ -68,6 +70,7 @@ def decode_with_embeddings(model, length, input_one_hot1, temperature, device):
         inputs_embeds1 = embed_inputs(model.get_input_embeddings(), logits, device=device)
     return logits_so_far
 
+
 def decode_with_argmax(model, length, input_ids1, device):
     '''
     GPT2 decoding via dense representations (no arg-max)
@@ -76,13 +79,13 @@ def decode_with_argmax(model, length, input_ids1, device):
     logits_so_far = None
     for i in range(length):
         # if past is None:
-            # inputs_embeds = model.transformer.wte(input_ids1)
-            # inputs_embeds = embed_inputs(model.get_input_embeddings(), input_one_hot.type(torch.FloatTensor)/ temperature, device='cuda', print_entropy=True)
+        # inputs_embeds = model.transformer.wte(input_ids1)
+        # inputs_embeds = embed_inputs(model.get_input_embeddings(), input_one_hot.type(torch.FloatTensor)/ temperature, device='cuda', print_entropy=True)
         model_outputs = model(input_ids=input_ids1)
         # else:
         #     model_outputs = model(past_key_values=past, input_ids=input_ids1)
         logits = model_outputs.logits
-        past = model_outputs.past_key_values
+        # past = model_outputs.past_key_values
         logits = logits[:, -1, :]
         logits = logits.unsqueeze(1)
         logits_so_far = logits if logits_so_far is None else torch.cat((logits_so_far, logits), dim=1)
@@ -90,7 +93,6 @@ def decode_with_argmax(model, length, input_ids1, device):
         next_token = torch.argmax(logits)
         input_ids1 = torch.cat([input_ids1, next_token.unsqueeze(0).unsqueeze(0)], 1)
     return logits_so_far
-
 
 
 def query_via_embeddings():
@@ -101,11 +103,13 @@ def query_via_embeddings():
     out2 = model(input_ids=input_ids)
 
     input_ids_one_hot = one_hot(input_ids, dimension=tokenizer.vocab_size)
-    input_embeddings2 = embed_inputs(model.get_input_embeddings(), input_ids_one_hot.type(torch.FloatTensor),device='cuda')
+    input_embeddings2 = embed_inputs(model.get_input_embeddings(), input_ids_one_hot.type(torch.FloatTensor),
+                                     device='cuda')
     out3 = model(inputs_embeds=input_embeddings2)
     print(out1)
     print(out2)
     print(out3)
+
 
 model_size = "gpt2"
 tokenizer = GPT2Tokenizer.from_pretrained(model_size)
@@ -114,6 +118,7 @@ model.to('cuda')
 model.eval()
 input_ids = tokenizer.encode("In order to make an omelette", return_tensors="pt").to('cuda')
 input_one_hot = one_hot(input_ids, dimension=tokenizer.vocab_size)
+
 
 def experiment1():
     '''
@@ -126,6 +131,7 @@ def experiment1():
         text, nll, _ = get_text_from_logits(logits_so_far[0, :, :], tokenizer)
         print(text)
 
+
 def experiment2():
     '''
     in this experiment, we try the conventional greedy decopding of GPT (argmax at each step).
@@ -133,5 +139,6 @@ def experiment2():
     logits_so_far = decode_with_argmax(model, 100, input_ids, 'cuda')
     text, nll, _ = get_text_from_logits(logits_so_far[0, :, :], tokenizer)
     print(text)
+
 
 experiment2()
