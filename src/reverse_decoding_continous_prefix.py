@@ -27,7 +27,7 @@ assert phrase_length < 20, "the provided sentence is a bit too long . . .  "
 # embeddings of a prefix: [num-batches x num-tokens x VOCAB]
 prefix_length = 2
 batch_size = 1
-if False:
+if True:
     optimized_embeddings = torch.nn.Parameter(
         torch.rand([batch_size, prefix_length, model.config.n_embd], device='cuda'))
 else:
@@ -36,7 +36,7 @@ else:
     optimized_embeddings = torch.nn.Parameter(inputs_embeds.repeat(batch_size, 1, 1)).to('cuda')
 
 lr = 2.0
-iters_per_token = 100
+iters_per_token = 10
 step_size = phrase_length * iters_per_token
 optim = torch.optim.Adam([optimized_embeddings], lr=lr)
 scheduler = torch.optim.lr_scheduler.StepLR(optimizer=optim, step_size=step_size, gamma=0.9)
