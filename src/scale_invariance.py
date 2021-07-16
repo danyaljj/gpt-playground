@@ -67,6 +67,7 @@ model2.eval()
 
 input_ids = tokenizer.encode("To travel to Canada", return_tensors="pt").to(device)
 input_one_hot = one_hot(input_ids, dimension=tokenizer.vocab_size)
+context_length = input_ids.size()[1]
 
 # prepare the transformation matrices
 model1_embedding_inv = torch.pinverse(model1.get_input_embeddings().weight)
@@ -198,6 +199,8 @@ class EmbeddingProjection(torch.nn.Module):
 def experiment4():
     '''
     Here we tune a linear transformation that maps the embeddings of a model to the embeddings of a different model
+    More formally: find a transformation matrix \min_{w} = norm(W x E1 - E2)
+    Where E1 and E2 are the embedding matrics of two LMs
     '''
     embeddings1 = model1.get_input_embeddings().weight
     embeddings2 = model2.get_input_embeddings().weight
@@ -205,12 +208,12 @@ def experiment4():
     # the parameters that we're optimizing
     w = EmbeddingProjection(model1.config.n_embd, model2.config.n_embd).to(device)
 
-    lr = 0.001
-    step_size = 1
+    lr = 0.01
+    step_size = 200
     optim = torch.optim.Adam(w.parameters(), lr=lr)
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer=optim, step_size=step_size)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer=optim, step_size=step_size, gamma=0.2)
 
-    for iter in range(20):
+    for iter in range(600):
         _, _loss = w.forward(embeddings1, embeddings2)
         _loss.backward(retain_graph=True)
         print(_loss)
@@ -232,6 +235,28 @@ def experiment4():
         w.zero_grad()
     w.save('linear_transfer_v1.model')
 
+    prompt_embedding1 = torch.matmul(input_one_hot.type(torch.FloatTensor).to(device),
+                                     model1.get_input_embeddings().weight)
+    prompt_embedding2 = torch.matmul(input_one_hot.type(torch.FloatTensor).to(device),
+                                     model2.get_input_embeddings().weight)
+
+    # embeddings1 = model1.get_input_embeddings().weight
+    # embeddings2 = model2.get_input_embeddings().weight
+
+    temperature = 0.001
+    logits = decode(model1, 50, temperature, device, prompt_embedding1)
+    text, nll, _ = get_text_from_logits(logits[0, :, :], tokenizer)
+    print(f" model 1 output (proper prompt): {text}")
+
+    logits = decode(model2, 50, temperature, device, prompt_embedding2)
+    text, nll, _ = get_text_from_logits(logits[0, :, :], tokenizer)
+    print(f" model 2 output (proper prompt): {text}")
+
+    projected_embedding2 = w.transform(prompt_embedding2)
+    logits = decode(model2, 50, temperature, device, projected_embedding2)
+    text, nll, _ = get_text_from_logits(logits[0, :, :], tokenizer)
+    print(f" model 2 output (projected prompt): {text}")
+
 
 def experiment5():
     '''
@@ -239,9 +264,8 @@ def experiment5():
     '''
     prompt_embedding1 = torch.matmul(input_one_hot.type(torch.FloatTensor).to(device),
                                      model1.get_input_embeddings().weight)
-    prompt_embedding2 = torch.matmul(input_one_hot.type(torch.FloatTensor).to(device),
-                                     model2.get_input_embeddings().weight)
-
+    # prompt_embedding2 = torch.matmul(input_one_hot.type(torch.FloatTensor).to(device),
+    #                                  model2.get_input_embeddings().weight)
 
     # embeddings1 = model1.get_input_embeddings().weight
     # embeddings2 = model2.get_input_embeddings().weight
@@ -252,13 +276,122 @@ def experiment5():
     text, nll, _ = get_text_from_logits(logits[0, :, :], tokenizer)
     print(f" model 1 output (proper prompt): {text}")
 
-    logits = decode(model2, 50, temperature, device, prompt_embedding2)
-    text, nll, _ = get_text_from_logits(logits[0, :, :], tokenizer)
-    print(f" model 2 output (proper prompt): {text}")
+    # logits = decode(model2, 50, temperature, device, prompt_embedding2)
+    # text, nll, _ = get_text_from_logits(logits[0, :, :], tokenizer)
+    # print(f" model 2 output (proper prompt): {text}")
 
-    w = EmbeddingProjection.load('linear_transfer_v1.model', model1.config.n_embd, model2.config.n_embd).to(device)
+    w = EmbeddingProjection.load('linear_transfer_v1.model', model1.config.n_embd, model1.config.n_embd).to(device)
     projected_embedding2 = w.transform(prompt_embedding1)
     logits = decode(model2, 50, temperature, device, projected_embedding2)
+    text, nll, _ = get_text_from_logits(logits[0, :, :], tokenizer)
+    print(f" model 2 output (projected prompt): {text}")
+
+
+class EmbeddingProjection1(torch.nn.Module):
+    def __init__(self, model2size, vocabSize):
+        super(EmbeddingProjection1, self).__init__()
+        self.L = torch.nn.Parameter(torch.rand([1, context_length, vocabSize], device=device))
+        self.optimized_prompt = torch.nn.Parameter(torch.rand([1, context_length, model2size], device=device))
+
+    # norm(e1 - L x E1) + norm(e2 - L x E2)
+    def forward(self, prompt1, model1embedding, model2embedding):
+        # TOOD: add a condition for loss computation
+        # alternatively: nn.L1Loss
+        # loss = torch.nn.MSELoss()(projected, gold_projected)
+        norm = torch.nn.MSELoss()
+        # norm = torch.nn.L1Loss()
+
+        l1 = norm(prompt1, torch.matmul(self.L, model1embedding))
+        l2 = norm(self.optimized_prompt, torch.matmul(self.L, model2embedding))
+        self.L_probs = F.softmax(self.L, dim=2)
+        entropy = torch.mean(
+            # entropy for each position
+            torch.sum(-torch.log(self.L_probs + 0.000001) * self.L_probs, dim=2)
+        )
+        w = 0.99
+        loss = w * entropy + (1 - w) * (l1 + l2)
+        return self.optimized_prompt, self.L, loss, l1, l2, entropy
+
+    def save(self, path):
+        torch.save(self.state_dict(), path)
+
+    @staticmethod
+    def load(path, inputSize, outputSize):
+        # model = EmbeddingProjection1(inputSize, outputSize)
+        # model.load_state_dict(torch.load(path))
+        # model.eval()
+        # return model
+        pass
+
+
+def experiment6():
+    '''
+    This experiment finds Here we tune a linear transformation that maps the embeddings of a model to the embeddings of a different model
+    Formally, joint optimization: \min_{e2, L} = norm(e1 - L x E1) + norm(e2 - L x E2)
+    Optionally, we can also add entropy(L) to the loss
+    '''
+    prompt_embedding1 = torch.matmul(input_one_hot.type(torch.FloatTensor).to(device),
+                                     model1.get_input_embeddings().weight)
+    prompt_embedding2 = torch.matmul(input_one_hot.type(torch.FloatTensor).to(device),
+                                     model2.get_input_embeddings().weight)
+
+    embeddings1 = model1.get_input_embeddings().weight
+    embeddings2 = model2.get_input_embeddings().weight
+
+    # the parameters that we're optimizing
+    model = EmbeddingProjection1(model2size=model2.config.n_embd, vocabSize=tokenizer.vocab_size).to(device)
+
+    lr = 5.14
+    step_size = 600
+    temperature = 0.001
+    optim = torch.optim.Adam(model.parameters(), lr=lr)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer=optim, step_size=step_size, gamma=0.85)
+
+    for iter in range(10000):
+        optimized_prompt, _, _loss, l1, l2, _entropy = model.forward(prompt1=prompt_embedding1,
+                                                                     model1embedding=embeddings1,
+                                                                     model2embedding=embeddings2)
+        _loss.backward(retain_graph=True)
+        if iter % 100 == 0:
+            print(_loss)
+
+        if iter % 500 == 0:
+            print(f" - - - - - - - \n iter = {iter}")
+            logits = decode(model1, 50, temperature, device, prompt_embedding1)
+            text, nll, _ = get_text_from_logits(logits[0, :, :], tokenizer)
+            print(f" model 1 output (proper prompt): {text}")
+
+            logits = decode(model2, 50, temperature, device, optimized_prompt.data)
+            text, nll, _ = get_text_from_logits(logits[0, :, :], tokenizer)
+            print(f" model 2 output (projected prompt): {text}")
+
+        # torch.nn.utils.clip_grad_norm_([optimized_logits], 1.0)
+        optim.step()
+        scheduler.step()
+
+        grad_norms = [p.grad.data.norm(2).tolist() for p in
+                      list(filter(lambda p: p.grad is not None, model.parameters()))]
+        avg_grad_norm = sum(grad_norms) / len(grad_norms) if len(grad_norms) > 0 else 0.0
+
+        wandb.log({
+            'iter': iter,
+            "loss": _loss.detach().tolist(),
+            "l1": l1.detach().tolist(),
+            "l2": l2.detach().tolist(),
+            "_entropy": _entropy.detach().tolist(),
+            "log_loss": torch.log(_loss).detach().tolist(),
+            'avg_grad_norm': avg_grad_norm,
+        })
+
+        model.zero_grad()
+
+    model.save('linear_transfer_v1.model')
+
+    logits = decode(model1, 50, temperature, device, prompt_embedding1)
+    text, nll, _ = get_text_from_logits(logits[0, :, :], tokenizer)
+    print(f" model 1 output (proper prompt): {text}")
+
+    logits = decode(model2, 50, temperature, device, optimized_prompt.data)
     text, nll, _ = get_text_from_logits(logits[0, :, :], tokenizer)
     print(f" model 2 output (projected prompt): {text}")
 
@@ -266,5 +399,6 @@ def experiment5():
 # experiment1()
 # experiment2()
 # experiment3()
-experiment4()
-experiment5()
+# experiment4()
+# experiment5()
+experiment6()
