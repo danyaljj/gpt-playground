@@ -41,8 +41,8 @@ else:
 
 lr = 0.00001
 step_size = 1  # TODO: need to play with this
-optim = torch.optim.Adam([optimized_logits], lr=lr)
-scheduler = torch.optim.lr_scheduler.StepLR(optimizer=optim, step_size=step_size)
+optimizer = torch.optim.Adam([optimized_logits], lr=lr)
+scheduler = torch.optim.lr_scheduler.StepLR(optimizer=optimizer, step_size=step_size)
 temperature = 0.01
 length = prefix_length + phrase_length
 
@@ -87,7 +87,7 @@ for iter in range(1000):
 
     _loss.backward(retain_graph=True)
     # torch.nn.utils.clip_grad_norm_([optimized_logits], 1.0)
-    optim.step()
+    optimizer.step()
     scheduler.step()
 
     # projection step: make the logits more peakier
@@ -121,5 +121,4 @@ for iter in range(1000):
         # '_sum1_loss': _sum1_loss
     })
 
-    # break
-    model.zero_grad()
+    optimizer.zero_grad()
