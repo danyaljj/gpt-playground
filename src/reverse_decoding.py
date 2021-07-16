@@ -3,46 +3,13 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 import wandb
-from torch.distributions.utils import probs_to_logits, logits_to_probs
+from utils import embed_inputs, get_text_from_logits
 
 wandb.init(project='reverse decoding')
 
-
-def one_hot(tensor, dimension):
-    while len(tensor.shape) < 2:
-        tensor = tensor.unsqueeze(0)
-    onehot = torch.LongTensor(tensor.shape[0], tensor.shape[1], dimension).to(tensor.device)
-    onehot.zero_().scatter_(2, tensor.unsqueeze(-1), 1)
-    return onehot
-
-
-def embed_inputs(embedding, logits, device='cuda'):
-    '''
-    embeds inputs in a dense representation, before passing them to the model
-    '''
-    probs = F.softmax(logits, dim=-1)
-    probs = probs.to(device)
-    return torch.matmul(probs, embedding.weight)
-
-
-def _greedy(logits):
-    _, last = torch.topk(logits, k=1, dim=-1)
-    return last
-
-
-def get_text_from_logits(logits, tokenizer):
-    output_so_far = None
-    last = None
-    logp = 0
-    for i in range(logits.shape[0]):
-        last = _greedy(logits[i, :])
-        output_so_far = last if output_so_far is None else torch.cat((output_so_far, last), dim=0)
-        logp += logits[i, :].log_softmax(-1)[last.item()].item()
-    nll = -logp
-    text = tokenizer.decode(output_so_far.tolist())
-    text = text.replace('\n', ' ')
-    return text, nll, output_so_far
-
+'''
+Decoding to the lest, given right context. We want to find a left-tokens such that it leads to a certain generation on the right side.
+'''
 
 model_size = "gpt2"
 tokenizer = GPT2Tokenizer.from_pretrained(model_size)
@@ -50,10 +17,10 @@ model = GPT2LMHeadModel.from_pretrained(model_size, output_hidden_states=True)
 model.to('cuda')
 model.eval()
 
-right_context_ids = tokenizer.encode(" was found in a field.", return_tensors="pt").to('cuda')
+right_context_ids = tokenizer.encode("good", return_tensors="pt").to('cuda')
 # input_ids_one_hot = one_hot(input_ids, dimension=tokenizer.vocab_size)
 phrase_length = right_context_ids.size()[1]  # the length of the provided phrase
-assert phrase_length > 2, "the provided sentence is a bit too short . . .  "
+assert phrase_length >= 1, "the provided sentence is a bit too short . . .  "
 assert phrase_length < 20, "the provided sentence is a bit too long . . .  "
 
 # the logits of the word that we want to predict
@@ -73,7 +40,7 @@ else:
     optimized_logits = torch.nn.Parameter(optimized_logits)
 
 lr = 0.00001
-step_size = 1
+step_size = 1  # TODO: need to play with this
 optim = torch.optim.Adam([optimized_logits], lr=lr)
 scheduler = torch.optim.lr_scheduler.StepLR(optimizer=optim, step_size=step_size)
 temperature = 0.01
