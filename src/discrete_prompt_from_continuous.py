@@ -3,6 +3,7 @@ import torch
 import wandb
 import math
 from utils import one_hot, decode_with_embedding, get_text_from_logits, decode_with_one_hot
+from os import listdir
 
 wandb.init(project='discrete prompt from continuous')
 
@@ -15,6 +16,7 @@ model = GPT2LMHeadModel.from_pretrained(model_size, output_hidden_states=True)
 model.to(device)
 model.eval()
 
+
 def discrete_prompt_from_continuous(prompt_embedding):
     '''
     This experiment finds a discrete representation of a prompt.
@@ -24,10 +26,10 @@ def discrete_prompt_from_continuous(prompt_embedding):
         - while maximzing some measure of coherence for L (like NLL loss).
     '''
 
-
     # the parameters that we're optimizing
     batch_size = 1
-    prefix_length = input_one_hot.size()[1] # this has to match the size of the embedding
+    prefix_length = prompt_embedding.size()[1]  # this has to match the size of the embedding
+    print(f" * prompt length: {prefix_length}")
     optimized_word_logits = torch.nn.Parameter(
         torch.rand([batch_size, prefix_length, tokenizer.vocab_size], device='cuda')
     )
@@ -48,7 +50,7 @@ def discrete_prompt_from_continuous(prompt_embedding):
             # entropy for each position
             torch.sum(-torch.log(optimized_word_probs + 0.000001) * optimized_word_probs, dim=2)
         )
-        _loss = w * l1 # + (1-w) * entropy
+        _loss = w * l1  # + (1-w) * entropy
 
         _loss.backward(retain_graph=True)
 
@@ -59,7 +61,7 @@ def discrete_prompt_from_continuous(prompt_embedding):
             dynamic_temperature *= 0.9
 
         if iter % 100 == 0:
-            print(_loss)
+            print(f" loss: {_loss}")
 
         if iter % 500 == 0:
             print(f" - - - - - - - \n iter = {iter}")
@@ -84,15 +86,14 @@ def discrete_prompt_from_continuous(prompt_embedding):
             text, nll, _ = get_text_from_logits(optimized_word_probs[0, :, :], tokenizer)
             print(f" the optimized probs: {text}")
 
-
-
-        # torch.nn.utils.clip_grad_norm_([optimized_logits], 1.0)
+        torch.nn.utils.clip_grad_norm_([optimized_word_probs], 1.0)
         optimizer.step()
         scheduler.step()
 
-        grad_norms = [p.grad.data.norm(2).tolist() for p in
-                      list(filter(lambda p: p.grad is not None, model.parameters()))]
-        avg_grad_norm = sum(grad_norms) / len(grad_norms) if len(grad_norms) > 0 else 0.0
+        grad_norms = [p.grad.data.norm(2).tolist() for p in list(filter(lambda p: p.grad is not None, model.parameters()))]
+        avg_grad_norm = sum(grad_norms) / len(grad_norms)
+
+        grad_sum = sum([torch.sum(p.grad.data).tolist() for p in list(filter(lambda p: p.grad is not None, model.parameters()))])
 
         wandb.log({
             'iter': iter,
@@ -104,6 +105,7 @@ def discrete_prompt_from_continuous(prompt_embedding):
             "log_loss": torch.log(_loss).detach().tolist(),
             "temperature": math.log(dynamic_temperature),
             'avg_grad_norm': avg_grad_norm,
+            'grad_sum': grad_sum
         })
 
         optimizer.zero_grad()
@@ -111,10 +113,23 @@ def discrete_prompt_from_continuous(prompt_embedding):
     # model.save('linear_transfer_v1.model')
 
 
-input_ids = tokenizer.encode("While the best food in Seattle is kebab, there are other form of garbage sentences that one can extract in order to", return_tensors="pt").to(device)
-input_one_hot = one_hot(input_ids, dimension=tokenizer.vocab_size)
-context_length = input_ids.size()[1]
-prompt_embedding = torch.matmul(input_one_hot.type(torch.FloatTensor).to(device), model.get_input_embeddings().weight)
+def experiment1():
+    input_ids = tokenizer.encode(
+        "While the best food in Seattle is kebab, there are other form of garbage sentences that one can extract in order to",
+        return_tensors="pt").to(device)
+    input_one_hot = one_hot(input_ids, dimension=tokenizer.vocab_size)
+    prompt_embedding = torch.matmul(input_one_hot.type(torch.FloatTensor).to(device),
+                                    model.get_input_embeddings().weight)
+    discrete_prompt_from_continuous(prompt_embedding)
 
-discrete_prompt_from_continuous(prompt_embedding)
 
+def experiment2():
+    dir = '/tmp/gpt-playground/optimized_prompts/'
+    onlyfiles = [f for f in listdir(dir)]
+    print(f"Available prompts: {onlyfiles}")
+    prompt_embedding = torch.load(dir + 'optimized_prompt_jumped_to_bite.pt').to(device)
+    discrete_prompt_from_continuous(prompt_embedding)
+
+
+# experiment1()
+experiment2()
