@@ -15,11 +15,7 @@ model = GPT2LMHeadModel.from_pretrained(model_size, output_hidden_states=True)
 model.to(device)
 model.eval()
 
-input_ids = tokenizer.encode("To travel to Canada", return_tensors="pt").to(device)
-input_one_hot = one_hot(input_ids, dimension=tokenizer.vocab_size)
-context_length = input_ids.size()[1]
-
-def experiment1():
+def discrete_prompt_from_continuous(prompt_embedding):
     '''
     This experiment finds a discrete representation of a prompt.
     The objective consistens of the following terms:
@@ -27,12 +23,11 @@ def experiment1():
         - min_{L} entropy(L) so that we have minimum entropy for L
         - while maximzing some measure of coherence for L (like NLL loss).
     '''
-    prompt_embedding = torch.matmul(input_one_hot.type(torch.FloatTensor).to(device), model.get_input_embeddings().weight)
 
 
     # the parameters that we're optimizing
     batch_size = 1
-    prefix_length = 4 # let's say, this is known
+    prefix_length = input_one_hot.size()[1] # this has to match the size of the embedding
     optimized_word_logits = torch.nn.Parameter(
         torch.rand([batch_size, prefix_length, tokenizer.vocab_size], device='cuda')
     )
@@ -84,7 +79,10 @@ def experiment1():
             print(f" model prediction (using predicted embeddings): {text}")
 
             text, nll, _ = get_text_from_logits(optimized_word_logits[0, :, :], tokenizer)
-            print(f" the predicted logits: {text}")
+            print(f" the optimized logits: {text}")
+
+            text, nll, _ = get_text_from_logits(optimized_word_probs[0, :, :], tokenizer)
+            print(f" the optimized probs: {text}")
 
 
 
@@ -112,4 +110,11 @@ def experiment1():
 
     # model.save('linear_transfer_v1.model')
 
-experiment1()
+
+input_ids = tokenizer.encode("While the best food in Seattle is kebab, there are other form of garbage sentences that one can extract in order to", return_tensors="pt").to(device)
+input_one_hot = one_hot(input_ids, dimension=tokenizer.vocab_size)
+context_length = input_ids.size()[1]
+prompt_embedding = torch.matmul(input_one_hot.type(torch.FloatTensor).to(device), model.get_input_embeddings().weight)
+
+discrete_prompt_from_continuous(prompt_embedding)
+
