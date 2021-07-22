@@ -15,38 +15,40 @@ Decoding to the lest, given right context. We want to find a left-prefix such th
 model_size = "gpt2"
 tokenizer = GPT2Tokenizer.from_pretrained(model_size)
 model = GPT2LMHeadModel.from_pretrained(model_size, output_hidden_states=True)
-model.to('cuda')
+device = 'cuda'
+model.to(device)
 model.eval()
 
-input_ids = tokenizer.encode("jumped to bite.", return_tensors="pt").to('cuda')
+desired_ending = "jumped to bite."
+desired_ending_ids = tokenizer.encode(desired_ending, return_tensors="pt").to(device)
 # assert input_ids.size() == 2, f"sizes don't match {input_ids.size()} ({input_ids}) vs 2"
-phrase_length = input_ids.size()[1]  # the length of the provided phrase
-assert phrase_length >= 1, "the provided sentence is a bit too short . . .  "
-assert phrase_length < 20, "the provided sentence is a bit too long . . .  "
+desired_ending_length = desired_ending_ids.size()[1]  # the length of the provided phrase
+assert desired_ending_length >= 1, "the provided sentence is a bit too short . . .  "
+assert desired_ending_length < 20, "the provided sentence is a bit too long . . .  "
 
 # embeddings of a prefix: [num-batches x num-tokens x VOCAB]
 prefix_length = 2
 batch_size = 1
 if True:
     optimized_embeddings = torch.nn.Parameter(
-        torch.rand([batch_size, prefix_length, model.config.n_embd], device='cuda'))
+        torch.rand([batch_size, prefix_length, model.config.n_embd], device=device))
 else:
-    perfect_prompt_ids = tokenizer.encode("The dog", return_tensors="pt").to('cuda')
+    perfect_prompt_ids = tokenizer.encode("The dog", return_tensors="pt").to(device)
     inputs_embeds = model.transformer.wte(perfect_prompt_ids)
-    optimized_embeddings = torch.nn.Parameter(inputs_embeds.repeat(batch_size, 1, 1)).to('cuda')
+    optimized_embeddings = torch.nn.Parameter(inputs_embeds.repeat(batch_size, 1, 1)).to(device)
 
 lr = 2.0
 step_size = 100
 optimizer = torch.optim.Adam([optimized_embeddings], lr=lr)
 scheduler = torch.optim.lr_scheduler.StepLR(optimizer=optimizer, step_size=step_size, gamma=0.9)
 temperature = 0.01
-length = prefix_length + phrase_length
+length = prefix_length + desired_ending_length
 
-for iter in range(10000):
+for iter in range(200):
     past = None
     inputs_embeds = None
     logits_so_far = None
-    for i in range(phrase_length):
+    for i in range(desired_ending_length):
         if past is None:
             inputs_embeds = optimized_embeddings
         model_outputs = model(past_key_values=past, inputs_embeds=inputs_embeds)
@@ -55,14 +57,12 @@ for iter in range(10000):
         logits = logits[:, -1, :]
         logits = logits.unsqueeze(1)
         logits_so_far = logits if logits_so_far is None else torch.cat((logits_so_far, logits), dim=1)
-        inputs_embeds = embed_inputs(model.get_input_embeddings(), logits / temperature, device='cuda')
-
-    probs_so_far = F.softmax(logits_so_far, dim=2)
+        inputs_embeds = embed_inputs(model.get_input_embeddings(), logits / temperature, device=device)
 
     # TODO: if the gold prediction is not in top-k (e.g., k == 1), punish bigly
     # compute loss with respect to the ending
     right_context_probability = nn.CrossEntropyLoss()(logits_so_far.view(-1, logits_so_far.size(-1)),
-                                                      input_ids.view(-1).repeat(batch_size))
+                                                      desired_ending_ids.view(-1).repeat(batch_size))
     _loss = right_context_probability
     _loss.backward(retain_graph=True)
     # torch.nn.utils.clip_grad_norm_([optimized_logits], 1.0)
@@ -72,7 +72,7 @@ for iter in range(10000):
     print(" - - - - ")
     for batch_id in range(batch_size):
         predicted, nll, _ = get_text_from_logits(logits_so_far[batch_id, :, :], tokenizer)
-        print(f" * prefix: <--> {predicted}")
+        print(f" * prefix: ---> prediction: {predicted}")
 
     grad_norms = [p.grad.data.norm(2).tolist() for p in
                   list(filter(lambda p: p.grad is not None, model.parameters()))]
@@ -86,3 +86,5 @@ for iter in range(10000):
     })
 
     optimizer.zero_grad()
+
+torch.save(optimized_embeddings.data, f'optimized_prompts/optimized_prompt_{desired_ending.replace(".", "").replace(" ", "_")}.pt')
