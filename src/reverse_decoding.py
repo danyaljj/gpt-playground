@@ -71,7 +71,7 @@ for iter in range(1000):
     _right_context_probs = nn.CrossEntropyLoss()(probs_so_far.view(-1, probs_so_far.size(-1)),
                                                  right_context_ids.view(-1).repeat(batch_size))
 
-    # TODO: instead of maximizing entropy, maximize the maximum of the probabilty distribution
+    # TODO: instead of maximizing entropy, maximize the maximum of the probability distribution
     # minimize entropy so that we get peaky distributions
     _entropy = -torch.mean(
         # entropy for each position
