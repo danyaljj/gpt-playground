@@ -57,7 +57,11 @@ for iter in range(200):
         logits = logits[:, -1, :]
         logits = logits.unsqueeze(1)
         logits_so_far = logits if logits_so_far is None else torch.cat((logits_so_far, logits), dim=1)
-        inputs_embeds = embed_inputs(model.get_input_embeddings(), logits / temperature, device=device)
+
+        # with straight-through
+        if True:
+            logits_so_far = (logits_so_far.detach() / temperature - logits_so_far).detach() + logits_so_far
+        inputs_embeds = embed_inputs(model.get_input_embeddings(), logits, device=device)
 
     # TODO: if the gold prediction is not in top-k (e.g., k == 1), punish bigly
     # compute loss with respect to the ending
