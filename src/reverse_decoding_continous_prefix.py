@@ -93,8 +93,8 @@ for iter in range(200):
             for iter2 in range(batch_size):
                 if iter1 == iter2:
                     continue
-            v1 = promptable_model.optimized_embeddings[iter1, :, :]
-            v2 = promptable_model.optimized_embeddings[iter2, :, :]
+            v1 = optimized_embeddings[iter1, :, :]
+            v2 = optimized_embeddings[iter2, :, :]
             dist = torch.nn.CosineSimilarity()(v1, v2)
             cosine_distances.append(sum(dist.tolist()) / len(dist.tolist()))
         long_pairs_ratio = [1.0 if dist > 0.2 else 0.0 for dist in cosine_distances]
@@ -104,6 +104,5 @@ for iter in range(200):
     wandb.log(output)
 
     optimizer.zero_grad()
-    promptable_model.zero_grad()
 
 # torch.save(optimized_embeddings.data, f'optimized_prompts/optimized_prompt_{desired_ending.replace(".", "").replace(" ", "_")}.pt')
