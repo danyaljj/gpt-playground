@@ -114,7 +114,7 @@ class EmbeddingProjection(torch.nn.Module):
 
     def forward(self, x, gold_projected):
         projected = self.linear(x)
-        # TOOD: add a condition for loss computation
+        # TODO: add a condition for loss computation
         # alternatively: nn.L1Loss
         # loss = torch.nn.MSELoss()(projected, gold_projected)
         loss = torch.nn.L1Loss()(projected, gold_projected)
@@ -230,7 +230,7 @@ class EmbeddingProjection1(torch.nn.Module):
 
     # norm(e1 - L x E1) + norm(e2 - L x E2)
     def forward(self, prompt1, model1embedding, model2embedding):
-        # TOOD: add a condition for loss computation
+        # TODO: add a condition for loss computation
         # alternatively: nn.L1Loss
         # loss = torch.nn.MSELoss()(projected, gold_projected)
         norm = torch.nn.MSELoss()
