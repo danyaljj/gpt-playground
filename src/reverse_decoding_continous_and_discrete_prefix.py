@@ -1,9 +1,9 @@
 from transformers import GPT2Tokenizer, GPT2LMHeadModel
-import torch
 from torch import nn
+from utils import embed_inputs, get_text_from_logits
+import torch
 import wandb
 import math
-from utils import embed_inputs, get_text_from_logits
 
 wandb.init(project='reverse decoding continuous and discrete prefix')
 
@@ -40,25 +40,27 @@ else:
     optimized_embeddings = torch.nn.Parameter(inputs_embeds.repeat(batch_size, 1, 1)).to(device)
 
 w = 0.5
-lr = 10.0
-step_size = 200
+lr = 2.0
+step_size = 20
 optimizer = torch.optim.Adam([optimized_embeddings, optimized_word_logits], lr=lr)
-scheduler = torch.optim.lr_scheduler.StepLR(optimizer=optimizer, step_size=step_size, gamma=0.85)
+scheduler = torch.optim.lr_scheduler.StepLR(optimizer=optimizer, step_size=step_size, gamma=0.99)
 temperature = 0.01
 # dynamic_temperature = 1000
 length = prefix_length + desired_ending_length
 
 for iter in range(2000):
     norm = torch.nn.L1Loss()
-    # optimized_word_probs = torch.nn.Softmax(dim=2)(optimized_word_logits / temperature)
+    # norm = torch.nn.MSELoss()
+    optimized_word_probs = torch.nn.Softmax(dim=2)(optimized_word_logits / temperature)
+    optimized_word_probs_no_temp = torch.nn.Softmax(dim=2)(optimized_word_logits)
     # with straight-through
-    # if True:
-    #     optimized_word_probs = (optimized_word_probs.detach() - optimized_word_logits).detach() + optimized_word_logits
+    if True:
+        optimized_word_probs = (optimized_word_probs.detach() - optimized_word_probs_no_temp).detach() + optimized_word_probs_no_temp
     # optimized_word_probs = torch.abs(optimized_word_logits) / torch.sum(optimized_word_logits)
-    optimized_word_probs = optimized_word_logits
+    # optimized_word_probs = optimized_word_logits
     embedding_loss = norm(optimized_embeddings, torch.matmul(optimized_word_probs, model.get_input_embeddings().weight))
 
-    norm_loss = norm(torch.ones([batch_size, prefix_length]).to(device), torch.sum(optimized_word_probs, dim=2))
+    # norm_loss = norm(torch.ones([batch_size, prefix_length]).to(device), torch.sum(optimized_word_probs, dim=2))
 
     # entropy = torch.mean(
     #     # entropy for each position
@@ -93,7 +95,7 @@ for iter in range(2000):
     right_context_probability = nn.CrossEntropyLoss()(logits_so_far.view(-1, logits_so_far.size(-1)),
                                                       desired_ending_ids.view(-1).repeat(batch_size))
 
-    _loss = w * right_context_probability + (1-w) * (norm_loss + embedding_loss)
+    _loss = w * right_context_probability + (1-w) * (embedding_loss)
     _loss.backward(retain_graph=True)
     # torch.nn.utils.clip_grad_norm_([optimized_logits], 1.0)
     optimizer.step()
@@ -118,12 +120,13 @@ for iter in range(2000):
         "total_loss_log": torch.log(_loss).detach().tolist(),
         "right_context_probability": right_context_probability.detach().tolist(),
         "right_context_probability_log": torch.log(right_context_probability).detach().tolist(),
+        'embedding_loss': embedding_loss.detach().tolist(),
+        'embedding_loss_log': torch.log(embedding_loss).detach().tolist(),
         'avg_grad_norm_log': math.log(avg_grad_norm),
         'lr': scheduler.get_last_lr()[0],
-        'embedding_loss': embedding_loss.detach().tolist(),
         'entropy': entropy.detach().tolist(),
     })
 
     optimizer.zero_grad()
 
-torch.save(optimized_embeddings.data, f'optimized_prompts/optimized_prompt_{desired_ending.replace(".", "").replace(" ", "_")}.pt')
+# torch.save(optimized_embeddings.data, f'optimized_prompts/optimized_prompt_{desired_ending.replace(".", "").replace(" ", "_")}.pt')
