@@ -78,13 +78,32 @@ for iter in range(200):
                   list(filter(lambda p: p.grad is not None, model.parameters()))]
     avg_grad_norm = sum(grad_norms) / len(grad_norms) if len(grad_norms) > 0 else 0.0
 
-    wandb.log({
+    output = {
         "total_loss": _loss.detach().tolist(),
         "right_context_probability": right_context_probability.detach().tolist(),
         'avg_grad_norm_log': math.log(avg_grad_norm),
-        'lr': scheduler.get_last_lr()[0],
-    })
+        'lr': scheduler.get_last_lr()[0]
+    }
+
+    # measuring the diversity of the prompts
+    if False and iter % 10 == 0:
+        cosine_distances = []
+        # average distance between any pair of embeddijngs
+        for iter1 in range(batch_size):
+            for iter2 in range(batch_size):
+                if iter1 == iter2:
+                    continue
+            v1 = promptable_model.optimized_embeddings[iter1, :, :]
+            v2 = promptable_model.optimized_embeddings[iter2, :, :]
+            dist = torch.nn.CosineSimilarity()(v1, v2)
+            cosine_distances.append(sum(dist.tolist()) / len(dist.tolist()))
+        long_pairs_ratio = [1.0 if dist > 0.2 else 0.0 for dist in cosine_distances]
+        output['overall_cosine_dist'] = sum(cosine_distances) / len(cosine_distances)
+        output['long_pairs_ratio'] = sum(long_pairs_ratio) / len(long_pairs_ratio)
+
+    wandb.log(output)
 
     optimizer.zero_grad()
+    promptable_model.zero_grad()
 
-torch.save(optimized_embeddings.data, f'optimized_prompts/optimized_prompt_{desired_ending.replace(".", "").replace(" ", "_")}.pt')
+# torch.save(optimized_embeddings.data, f'optimized_prompts/optimized_prompt_{desired_ending.replace(".", "").replace(" ", "_")}.pt')
