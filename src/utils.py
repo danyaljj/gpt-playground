@@ -1,6 +1,6 @@
 import torch
 import torch.nn.functional as F
-
+from torch import nn
 
 def decode_with_embedding(model, length, temperature, device, prompt_embedding):
     '''
@@ -110,3 +110,9 @@ def one_hot(tensor, dimension):
     onehot = torch.LongTensor(tensor.shape[0], tensor.shape[1], dimension).to(tensor.device)
     onehot.zero_().scatter_(2, tensor.unsqueeze(-1), 1)
     return onehot
+
+def plot_histogram(x):
+    import matplotlib.pyplot as plt
+    import numpy as np
+    plt.hist(x)
+    plt.show()
