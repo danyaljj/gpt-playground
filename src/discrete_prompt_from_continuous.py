@@ -137,19 +137,24 @@ def experiment3():
     '''
 
     input_ids = tokenizer.encode(
-        "While the best food in Seattle is kebab, there are other form of garbage sentences that one can extract in order to",
+        "While hot dogs are pretty popular in Seattle,",
         return_tensors="pt").to(device)
     input_one_hot = one_hot(input_ids, dimension=tokenizer.vocab_size)
     prompt_embedding = torch.matmul(input_one_hot.type(torch.FloatTensor).to(device),
                                     model.get_input_embeddings().weight)
 
-    for idx in range(10):
-        noise_level = 0.1 * idx
+    print(torch.mean(torch.abs(prompt_embedding)))
+    print(torch.max(torch.abs(prompt_embedding)))
+
+    for idx in range(20):
+        noise_level = 0.02 * idx
         print(" - - - ")
-        print(noise_level)
+        print(f"noise_level: {noise_level}")
         prompt_embedding += noise_level * torch.randn(size=prompt_embedding.size()).to(device)
         loss, text_optimized_logits, text_pred_via_optimized_logits = discrete_prompt_from_continuous(prompt_embedding, max_iter=500, verbose=False)
-        print(loss, text_optimized_logits, text_pred_via_optimized_logits)
+        print(f"loss: {loss}")
+        print(f"text_optimized_logits: {text_optimized_logits}")
+        print(f"text_pred_via_optimized_logits: {text_pred_via_optimized_logits}")
 
 
 # experiment1()
