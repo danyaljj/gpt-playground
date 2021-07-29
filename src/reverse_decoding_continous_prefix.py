@@ -4,7 +4,7 @@ import torch.nn.functional as F
 from torch import nn
 import wandb
 import math
-from utils import embed_inputs, get_text_from_logits
+from utils import embed_inputs, get_text_from_logits, one_hot
 
 wandb.init(project='reverse decoding continuous prefix')
 
@@ -23,7 +23,7 @@ model.eval()
 def compute_continuous_prompts(desired_ending_ids, prefix_length, batch_size, max_iter=200):
     desired_ending_length = desired_ending_ids.size()[1]  # the length of the provided phrase
     assert desired_ending_length >= 1, "the provided sentence is a bit too short . . .  "
-    assert desired_ending_length < 20, "the provided sentence is a bit too long . . .  "
+    assert desired_ending_length < 50, "the provided sentence is a bit too long . . .  "
 
     if True:
         optimized_embeddings = torch.nn.Parameter(
@@ -34,7 +34,7 @@ def compute_continuous_prompts(desired_ending_ids, prefix_length, batch_size, ma
         optimized_embeddings = torch.nn.Parameter(inputs_embeds.repeat(batch_size, 1, 1)).to(device)
 
     lr = 2.0
-    step_size = 100
+    step_size = 50
     optimizer = torch.optim.Adam([optimized_embeddings], lr=lr)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer=optimizer, step_size=step_size, gamma=0.9)
     temperature = 0.01
@@ -69,10 +69,11 @@ def compute_continuous_prompts(desired_ending_ids, prefix_length, batch_size, ma
         optimizer.step()
         scheduler.step()
 
-        print(" - - - - ")
-        for batch_id in range(batch_size):
-            predicted, nll, _ = get_text_from_logits(logits_so_far[batch_id, :, :], tokenizer)
-            print(f" * prefix: ---> prediction: {predicted}")
+        if iter % 50 == 0:
+            print(" - - - - ")
+            for batch_id in range(batch_size):
+                predicted, nll, _ = get_text_from_logits(logits_so_far[batch_id, :, :], tokenizer)
+                print(f" * prefix (len: {prefix_length}) ---> prediction: {predicted} (len: {desired_ending_length})")
 
         grad_norms = [p.grad.data.norm(2).tolist() for p in
                       list(filter(lambda p: p.grad is not None, model.parameters()))]
@@ -81,6 +82,7 @@ def compute_continuous_prompts(desired_ending_ids, prefix_length, batch_size, ma
         output = {
             "total_loss": _loss.detach().tolist(),
             "right_context_probability": right_context_probability.detach().tolist(),
+            "right_context_probability_log": torch.log(right_context_probability).detach().tolist(),
             'avg_grad_norm_log': math.log(avg_grad_norm),
             'lr': scheduler.get_last_lr()[0]
         }
@@ -106,6 +108,7 @@ def compute_continuous_prompts(desired_ending_ids, prefix_length, batch_size, ma
         optimizer.zero_grad()
 
     # torch.save(optimized_embeddings.data, f'optimized_prompts/optimized_prompt_{desired_ending.replace(".", "").replace(" ", "_")}.pt')
+    return optimized_embeddings
 
 
 def experiment1():
@@ -117,4 +120,47 @@ def experiment1():
     compute_continuous_prompts(desired_ending_ids, prefix_length=2, batch_size=1, max_iter=200)
 
 
-experiment1()
+def experiment2():
+    '''
+    how many of the prompts overlaps with the gold prompt?
+    '''
+    batch_size = 200
+    desired_ending = "jumped to bite."
+    desired_ending_ids = tokenizer.encode(desired_ending, return_tensors="pt").to(device)
+    # assert input_ids.size() == 2, f"sizes don't match {input_ids.size()} ({input_ids}) vs 2"
+
+    desired_prompt = 'The dog'
+    desired_prompt_ids = tokenizer.encode(desired_prompt, return_tensors="pt").to(device)
+    prefix_length = desired_prompt_ids.size()[1]
+    desired_prompt_one_hot = one_hot(desired_prompt_ids, dimension=tokenizer.vocab_size)
+    desired_prompt_embedding = torch.matmul(desired_prompt_one_hot.type(torch.FloatTensor).to(device),
+                                            model.get_input_embeddings().weight)
+
+    # embeddings of a prefix: [num-batches x num-tokens x VOCAB]
+    optimized_embeddings = compute_continuous_prompts(desired_ending_ids, prefix_length=prefix_length,
+                                                      batch_size=batch_size, max_iter=400)
+
+    cosine_distances = []
+    cosine_distances_to_gold_prompt = []
+    # average distance between any pair of embeddings
+    for iter1 in range(batch_size):
+        v1 = optimized_embeddings[iter1, :, :]
+        dist = torch.nn.CosineSimilarity()(v1, desired_prompt_embedding[0,:])
+        cosine_distances_to_gold_prompt.append(sum(dist.tolist()) / len(dist.tolist()))
+        for iter2 in range(batch_size):
+            if iter1 == iter2:
+                continue
+
+            v2 = optimized_embeddings[iter2, :, :]
+            dist = torch.nn.CosineSimilarity()(v1, v2)
+            cosine_distances.append(sum(dist.tolist()) / len(dist.tolist()))
+        # long_pairs_ratio = [1.0 if dist > 0.2 else 0.0 for dist in cosine_distances]
+
+    print(cosine_distances_to_gold_prompt)
+    count_nearby = len([x for x in cosine_distances_to_gold_prompt if abs(x) > 0.95])
+    print(f" * count_nearby: {count_nearby}")
+    print(f" * cosine_distances_to_gold_prompt: {len(cosine_distances_to_gold_prompt)}")
+
+
+# experiment1()
+experiment2()
