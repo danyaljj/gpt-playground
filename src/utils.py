@@ -2,6 +2,9 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
+# used to prevent numerical issues
+eps = 1e-10
+
 def decode_with_embedding(model, length, temperature, device, prompt_embedding):
     '''
     GPT2 decoding via dense representations (no arg-max)
@@ -116,3 +119,19 @@ def plot_histogram(x):
     import numpy as np
     plt.hist(x)
     plt.show()
+
+
+def svd_model_embeddings(model):
+    '''
+    uses SVD to decompose
+    '''
+    E = model.get_input_embeddings().weight
+    # since the embedding matrix is not degenerate, `full_matrices` should not have any effect in the size of the matrices
+    u, s, vh = torch.linalg.svd(E, full_matrices=False)
+
+    # verify that this is a good decomposition
+    r = torch.matmul(u, s * vh)
+    diff = torch.mean(torch.abs(r - E))
+    assert diff < 0.07, f"the diff is larger than expected {diff}"
+
+    return u, s, vh
