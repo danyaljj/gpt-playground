@@ -2,31 +2,37 @@ from transformers import GPT2Tokenizer, GPT2LMHeadModel
 import torch
 import torch.nn.functional as F
 import wandb
-import utils
+from src.reverse_decoding_continous_prefix import compute_continuous_prompts
+from utils import one_hot, decode_with_embedding, get_text_from_logits
 
 wandb.init(project='embedding projection')
 
 device = 'cuda'
 
-model1_size = "gpt2"
+model1_size = "gpt2-medium"
 tokenizer = GPT2Tokenizer.from_pretrained(model1_size)
 
 model1 = GPT2LMHeadModel.from_pretrained(model1_size, output_hidden_states=True)
 model1.to(device)
 model1.eval()
 
-model2_size = "gpt2-medium"
+model2_size = "gpt2"
 model2 = GPT2LMHeadModel.from_pretrained(model2_size, output_hidden_states=True)
 model2.to(device)
 model2.eval()
 
 input_ids = tokenizer.encode("To travel to Canada", return_tensors="pt").to(device)
-input_one_hot = utils.one_hot(input_ids, dimension=tokenizer.vocab_size)
+input_one_hot = one_hot(input_ids, dimension=tokenizer.vocab_size)
 context_length = input_ids.size()[1]
 
 # prepare the transformation matrices
 model1_embedding_inv = torch.pinverse(model1.get_input_embeddings().weight)
-transformation_1_to_2_matrix = torch.matmul(model1_embedding_inv, model2.get_input_embeddings().weight)
+# transformation_1_to_2_matrix = torch.matmul(model1_embedding_inv, model2.get_input_embeddings().weight)
+E1 = model1.get_input_embeddings().weight
+E2 = model2.get_input_embeddings().weight
+E2_squared = torch.matmul(torch.transpose(E2, 0, 1), E2)
+E1_E2 = torch.matmul(torch.transpose(E1, 0, 1), E2)
+transformation_1_to_2_matrix = torch.matmul(E1_E2, torch.inverse(E2_squared))
 
 
 def experiment1():
@@ -42,20 +48,20 @@ def experiment1():
     transformed_prompt_embedding2 = torch.matmul(prompt_embedding1, transformation_1_to_2_matrix)
 
     # compare the embeddings
-    diff = torch.abs(torch.mean(transformed_prompt_embedding2 - prompt_embedding2)).tolist()
+    diff = torch.abs(torch.sum(transformed_prompt_embedding2 - prompt_embedding2)).tolist()
     assert diff < 0.01, f'Diff: {diff} - the projection did not work! :-/ '
 
     temperature = 0.01  # to simulate the effect of arg-max
-    logits = utils.decode(model1, 50, temperature, device, prompt_embedding1)
-    text, nll, _ = utils.get_text_from_logits(logits[0, :, :], tokenizer)
+    logits = decode_with_embedding(model1, 50, temperature, device, prompt_embedding1)
+    text, nll, _ = get_text_from_logits(logits[0, :, :], tokenizer)
     print(f" model 1 output (proper prompt): {text}")
 
-    logits = utils.decode(model2, 50, temperature, device, prompt_embedding2)
-    text, nll, _ = utils.get_text_from_logits(logits[0, :, :], tokenizer)
+    logits = decode_with_embedding(model2, 50, temperature, device, prompt_embedding2)
+    text, nll, _ = get_text_from_logits(logits[0, :, :], tokenizer)
     print(f" model 2 output (proper prompt): {text}")
 
-    logits = utils.decode(model2, 50, temperature, device, transformed_prompt_embedding2)
-    text, nll, _ = utils.get_text_from_logits(logits[0, :, :], tokenizer)
+    logits = decode_with_embedding(model2, 50, temperature, device, transformed_prompt_embedding2)
+    text, nll, _ = get_text_from_logits(logits[0, :, :], tokenizer)
     print(f" model 2 output (projected prompt): {text}")
 
 
@@ -72,12 +78,12 @@ def experiment2():
 
         transformed_prompt_embedding2 = torch.matmul(prompt_random_embedding1, transformation_1_to_2_matrix)
 
-        logits = utils.decode(model1, 50, temperature, device, prompt_random_embedding1)
-        text, nll, _ = utils.get_text_from_logits(logits[0, :, :], tokenizer)
+        logits = decode_with_embedding(model1, 50, temperature, device, prompt_random_embedding1)
+        text, nll, _ = get_text_from_logits(logits[0, :, :], tokenizer)
         print(f" model 1 output (model 1 with random prompt): {text}")
 
-        logits = utils.decode(model2, 50, temperature, device, transformed_prompt_embedding2)
-        text, nll, _ = utils.get_text_from_logits(logits[0, :, :], tokenizer)
+        logits = decode_with_embedding(model2, 50, temperature, device, transformed_prompt_embedding2)
+        text, nll, _ = get_text_from_logits(logits[0, :, :], tokenizer)
         print(f" model 2 output (model 1 embeddings projected): {text}")
 
 
@@ -179,17 +185,17 @@ def experiment4():
     # embeddings2 = model2.get_input_embeddings().weight
 
     temperature = 0.001
-    logits = utils.decode(model1, 50, temperature, device, prompt_embedding1)
-    text, nll, _ = utils.get_text_from_logits(logits[0, :, :], tokenizer)
+    logits = decode_with_embedding(model1, 50, temperature, device, prompt_embedding1)
+    text, nll, _ = get_text_from_logits(logits[0, :, :], tokenizer)
     print(f" model 1 output (proper prompt): {text}")
 
-    logits = utils.decode(model2, 50, temperature, device, prompt_embedding2)
-    text, nll, _ = utils.get_text_from_logits(logits[0, :, :], tokenizer)
+    logits = decode_with_embedding(model2, 50, temperature, device, prompt_embedding2)
+    text, nll, _ = get_text_from_logits(logits[0, :, :], tokenizer)
     print(f" model 2 output (proper prompt): {text}")
 
     projected_embedding2 = w.transform(prompt_embedding2)
-    logits = utils.decode(model2, 50, temperature, device, projected_embedding2)
-    text, nll, _ = utils.get_text_from_logits(logits[0, :, :], tokenizer)
+    logits = decode_with_embedding(model2, 50, temperature, device, projected_embedding2)
+    text, nll, _ = get_text_from_logits(logits[0, :, :], tokenizer)
     print(f" model 2 output (projected prompt): {text}")
 
 
@@ -207,8 +213,8 @@ def experiment5():
 
     temperature = 0.001
 
-    logits = utils.decode(model1, 50, temperature, device, prompt_embedding1)
-    text, nll, _ = utils.get_text_from_logits(logits[0, :, :], tokenizer)
+    logits = decode_with_embedding(model1, 50, temperature, device, prompt_embedding1)
+    text, nll, _ = get_text_from_logits(logits[0, :, :], tokenizer)
     print(f" model 1 output (proper prompt): {text}")
 
     # logits = decode(model2, 50, temperature, device, prompt_embedding2)
@@ -217,8 +223,8 @@ def experiment5():
 
     w = EmbeddingProjection.load('linear_transfer_v1.model', model1.config.n_embd, model1.config.n_embd).to(device)
     projected_embedding2 = w.transform(prompt_embedding1)
-    logits = utils.decode(model2, 50, temperature, device, projected_embedding2)
-    text, nll, _ = utils.get_text_from_logits(logits[0, :, :], tokenizer)
+    logits = decode_with_embedding(model2, 50, temperature, device, projected_embedding2)
+    text, nll, _ = get_text_from_logits(logits[0, :, :], tokenizer)
     print(f" model 2 output (projected prompt): {text}")
 
 
@@ -292,12 +298,12 @@ def experiment6():
 
         if iter % 500 == 0:
             print(f" - - - - - - - \n iter = {iter}")
-            logits = utils.decode(model1, 50, temperature, device, prompt_embedding1)
-            text, nll, _ = utils.get_text_from_logits(logits[0, :, :], tokenizer)
+            logits = decode_with_embedding(model1, 50, temperature, device, prompt_embedding1)
+            text, nll, _ = get_text_from_logits(logits[0, :, :], tokenizer)
             print(f" model 1 output (proper prompt): {text}")
 
-            logits = utils.decode(model2, 50, temperature, device, optimized_prompt.data)
-            text, nll, _ = utils.get_text_from_logits(logits[0, :, :], tokenizer)
+            logits = decode_with_embedding(model2, 50, temperature, device, optimized_prompt.data)
+            text, nll, _ = get_text_from_logits(logits[0, :, :], tokenizer)
             print(f" model 2 output (projected prompt): {text}")
 
         # torch.nn.utils.clip_grad_norm_([optimized_logits], 1.0)
@@ -322,13 +328,48 @@ def experiment6():
 
     model.save('linear_transfer_v1.model')
 
-    logits = utils.decode(model1, 50, temperature, device, prompt_embedding1)
-    text, nll, _ = utils.get_text_from_logits(logits[0, :, :], tokenizer)
+    logits = decode_with_embedding(model1, 50, temperature, device, prompt_embedding1)
+    text, nll, _ = get_text_from_logits(logits[0, :, :], tokenizer)
     print(f" model 1 output (proper prompt): {text}")
 
-    logits = utils.decode(model2, 50, temperature, device, optimized_prompt.data)
-    text, nll, _ = utils.get_text_from_logits(logits[0, :, :], tokenizer)
+    logits = decode_with_embedding(model2, 50, temperature, device, optimized_prompt.data)
+    text, nll, _ = get_text_from_logits(logits[0, :, :], tokenizer)
     print(f" model 2 output (projected prompt): {text}")
+
+
+def experiment7():
+    desired_ending = "jumped to bite."
+    desired_ending_ids = tokenizer.encode(desired_ending, return_tensors="pt").to(device)
+    desired_ending_length = desired_ending_ids.size()[1]  # the length of the provided phrase
+    # assert input_ids.size() == 2, f"sizes don't match {input_ids.size()} ({input_ids}) vs 2"
+
+    batch_size = 5
+    # find a continuous prompt that results in desired ending
+    optimized_prompts = compute_continuous_prompts(desired_ending_ids,
+                                                   prefix_length=2,
+                                                   batch_size=batch_size,
+                                                   max_iter=500,
+                                                   model_name=model1)
+    print(" * * ")
+    temperature = 0.01  # to simulate the effect of arg-max
+    # verify that the first model leads to the desired ending
+    predicted_logits = decode_with_embedding(model1, desired_ending_length, temperature, device, optimized_prompts)
+    for batch_id in range(batch_size):
+        text, nll, _ = get_text_from_logits(predicted_logits[batch_id, :, :], tokenizer)
+        print(f" model 1 output (proper prompt): {text}")
+
+    # project the embeddings through cosine distance
+    v1 = optimized_prompts.unsqueeze(2)
+    v2 = model1.get_input_embeddings().weight.unsqueeze(0).unsqueeze(0)
+    projection = torch.nn.CosineSimilarity(dim=3)(v1, v2)
+    projected_embeddings = torch.matmul(projection, model2.get_input_embeddings().weight)
+
+    print(" - - - - - - - ")
+    # check the model's predictions
+    predicted_logits = decode_with_embedding(model2, desired_ending_length, temperature, device, projected_embeddings)
+    for batch_id in range(batch_size):
+        text, nll, _ = get_text_from_logits(predicted_logits[batch_id, :, :], tokenizer)
+        print(f" model 2 output (projected prompt): {text}")
 
 
 # experiment1()
@@ -336,4 +377,5 @@ def experiment6():
 # experiment3()
 # experiment4()
 # experiment5()
-experiment6()
+# experiment6()
+experiment7()

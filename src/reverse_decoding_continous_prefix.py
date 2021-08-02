@@ -4,7 +4,7 @@ import torch.nn.functional as F
 from torch import nn
 import wandb
 import math
-from utils import embed_inputs, get_text_from_logits, one_hot
+from utils import embed_inputs, get_text_from_logits, one_hot, decode_with_embedding
 
 wandb.init(project='reverse decoding continuous prefix')
 
@@ -20,17 +20,18 @@ model.to(device)
 model.eval()
 
 
-def compute_continuous_prompts(desired_ending_ids, prefix_length, batch_size, max_iter=200):
+def compute_continuous_prompts(desired_ending_ids, prefix_length, batch_size, max_iter=200, model_name=model):
+    print(f"prefix_length: {prefix_length}, batch_size: {batch_size}, max_iter: {max_iter}")
     desired_ending_length = desired_ending_ids.size()[1]  # the length of the provided phrase
     assert desired_ending_length >= 1, "the provided sentence is a bit too short . . .  "
     assert desired_ending_length < 50, "the provided sentence is a bit too long . . .  "
 
     if True:
         optimized_embeddings = torch.nn.Parameter(
-            torch.rand([batch_size, prefix_length, model.config.n_embd], device=device))
+            torch.rand([batch_size, prefix_length, model_name.config.n_embd], device=device))
     else:
         perfect_prompt_ids = tokenizer.encode("The dog", return_tensors="pt").to(device)
-        inputs_embeds = model.transformer.wte(perfect_prompt_ids)
+        inputs_embeds = model_name.transformer.wte(perfect_prompt_ids)
         optimized_embeddings = torch.nn.Parameter(inputs_embeds.repeat(batch_size, 1, 1)).to(device)
 
     lr = 2.0
@@ -47,7 +48,7 @@ def compute_continuous_prompts(desired_ending_ids, prefix_length, batch_size, ma
         for i in range(desired_ending_length):
             if past is None:
                 inputs_embeds = optimized_embeddings
-            model_outputs = model(past_key_values=past, inputs_embeds=inputs_embeds)
+            model_outputs = model_name(past_key_values=past, inputs_embeds=inputs_embeds)
             logits = model_outputs.logits
             past = model_outputs.past_key_values
             logits = logits[:, -1, :]
@@ -55,9 +56,19 @@ def compute_continuous_prompts(desired_ending_ids, prefix_length, batch_size, ma
             logits_so_far = logits if logits_so_far is None else torch.cat((logits_so_far, logits), dim=1)
 
             # with straight-through
-            if True:
-                logits_so_far = (logits_so_far.detach() / temperature - logits_so_far).detach() + logits_so_far
-            inputs_embeds = embed_inputs(model.get_input_embeddings(), logits, device=device)
+            # if True:
+            #     logits_so_far = (logits_so_far.detach() / temperature - logits_so_far).detach() + logits_so_far
+
+            inputs_embeds = embed_inputs(model_name.get_input_embeddings(), logits/temperature, device=device)
+
+        if iter % 100 == 99:
+            print(" - - - - ")
+            predicted_logits = decode_with_embedding(model_name, desired_ending_length, temperature, device, optimized_embeddings)
+            for batch_id in range(batch_size):
+                predicted, nll, _ = get_text_from_logits(logits_so_far[batch_id, :, :], tokenizer)
+                print(f" * batch ({batch_id}/{batch_size}) - iter: {iter}: prefix (len: {prefix_length}) ---> prediction: {predicted} (len: {desired_ending_length})")
+                text, nll, _ = get_text_from_logits(predicted_logits[batch_id, :, :], tokenizer)
+                print(f" * batch ({batch_id}/{batch_size}) - iter: {iter}: model output (prompted with dense prompt): {text}")
 
         # TODO: if the gold prediction is not in top-k (e.g., k == 1), punish bigly
         # compute loss with respect to the ending
@@ -69,14 +80,8 @@ def compute_continuous_prompts(desired_ending_ids, prefix_length, batch_size, ma
         optimizer.step()
         scheduler.step()
 
-        if iter % 50 == 0:
-            print(" - - - - ")
-            for batch_id in range(batch_size):
-                predicted, nll, _ = get_text_from_logits(logits_so_far[batch_id, :, :], tokenizer)
-                print(f" * prefix (len: {prefix_length}) ---> prediction: {predicted} (len: {desired_ending_length})")
-
         grad_norms = [p.grad.data.norm(2).tolist() for p in
-                      list(filter(lambda p: p.grad is not None, model.parameters()))]
+                      list(filter(lambda p: p.grad is not None, model_name.parameters()))]
         avg_grad_norm = sum(grad_norms) / len(grad_norms) if len(grad_norms) > 0 else 0.0
 
         output = {
@@ -117,7 +122,7 @@ def experiment1():
     # assert input_ids.size() == 2, f"sizes don't match {input_ids.size()} ({input_ids}) vs 2"
 
     # embeddings of a prefix: [num-batches x num-tokens x VOCAB]
-    compute_continuous_prompts(desired_ending_ids, prefix_length=2, batch_size=1, max_iter=200)
+    compute_continuous_prompts(desired_ending_ids, prefix_length=2, batch_size=1, max_iter=2000)
 
 
 def experiment2():
@@ -163,4 +168,4 @@ def experiment2():
 
 
 # experiment1()
-experiment2()
+# experiment2()
