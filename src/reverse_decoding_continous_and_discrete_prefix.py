@@ -180,10 +180,12 @@ def optimize_emeddings_decomposed_projections(desired_ending_ids, prefix_length,
         # similarity = torch.nn.CosineSimilarity(dim=1)(optimized_embeddings.squeeze(0), u)
         # normalized_embeddings = optimized_embeddings / torch.norm(optimized_embeddings, p=2, dim=2).unsqueeze(2)
         # similarity = torch.matmul(normalized_embeddings, torch.transpose(u, 0, 1))
-        similarity = torch.nn.CosineSimilarity(dim=2)(optimized_embeddings, u.unsqueeze(0))
+        v1 = optimized_embeddings.unsqueeze(1)
+        v2 = u.unsqueeze(0).unsqueeze(2)
+        similarity = torch.nn.CosineSimilarity(dim=3)(v1, v2)
         mean_sim_to_basis = torch.mean(similarity)
-        # max_sim_to_basis = torch.mean(torch.max(similarity, dim=2).values)
-        max_sim_to_basis = torch.max(similarity)
+        max_sim_to_basis = torch.mean(torch.max(similarity, dim=1).values)
+        # max_sim_to_basis = torch.max(similarity)
         _loss = w * right_context_probability - (1 - w) * max_sim_to_basis
 
         # print(" - - - - - ")
@@ -261,8 +263,8 @@ def experiment1():
 def experiment2():
     desired_ending = "jumped to bite."
     desired_ending_ids = tokenizer.encode(desired_ending, return_tensors="pt").to(device)
-    prefix_length = 1
-    batch_size = 1
+    prefix_length = 2
+    batch_size = 3
     optimize_emeddings_decomposed_projections(desired_ending_ids, prefix_length, batch_size, max_iter=10000)
 
 experiment2()
