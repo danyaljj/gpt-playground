@@ -6,6 +6,7 @@ import wandb
 import math
 import torch.nn.functional as F
 
+
 def optimize_logits_and_embeddings_jointly(desired_ending_ids, prefix_length, batch_size):
     '''
     Decoding to the lest, given right context. We want to find a left-prefix such that it leads to a certain generation on the right side.
@@ -48,7 +49,8 @@ def optimize_logits_and_embeddings_jointly(desired_ending_ids, prefix_length, ba
             optimized_word_probs = (optimized_word_probs.detach() - optimized_word_probs_no_temp).detach() + optimized_word_probs_no_temp
         # optimized_word_probs = torch.abs(optimized_word_logits) / torch.sum(optimized_word_logits)
         # optimized_word_probs = optimized_word_logits
-        embedding_loss = norm(optimized_embeddings, torch.matmul(optimized_word_probs, model.get_input_embeddings().weight))
+        embedding_loss = norm(optimized_embeddings,
+                              torch.matmul(optimized_word_probs, model.get_input_embeddings().weight))
 
         # norm_loss = norm(torch.ones([batch_size, prefix_length]).to(device), torch.sum(optimized_word_probs, dim=2))
 
@@ -85,7 +87,7 @@ def optimize_logits_and_embeddings_jointly(desired_ending_ids, prefix_length, ba
         right_context_probability = nn.CrossEntropyLoss()(logits_so_far.view(-1, logits_so_far.size(-1)),
                                                           desired_ending_ids.view(-1).repeat(batch_size))
 
-        _loss = w * right_context_probability + (1-w) * (embedding_loss)
+        _loss = w * right_context_probability + (1 - w) * (embedding_loss)
         _loss.backward(retain_graph=True)
         # torch.nn.utils.clip_grad_norm_([optimized_logits], 1.0)
         optimizer.step()
@@ -121,7 +123,12 @@ def optimize_logits_and_embeddings_jointly(desired_ending_ids, prefix_length, ba
 
     # torch.save(optimized_embeddings.data, f'optimized_prompts/optimized_prompt_{desired_ending.replace(".", "").replace(" ", "_")}.pt')
 
-def optimize_emeddings_decomposed_projections(desired_ending_ids, prefix_length, batch_size, max_iter=200):
+
+def optimize_emeddings_decomposed_projections(desired_ending_ids,
+                                              prefix_length,
+                                              batch_size,
+                                              max_iter=200,
+                                              use_svd=True):
     '''
     first, decompose the embedding matrix into orthogonal basis
     then optimize an embedding vector with respect to these orthogonal basis
@@ -135,12 +142,14 @@ def optimize_emeddings_decomposed_projections(desired_ending_ids, prefix_length,
         optimized_embeddings = torch.nn.Parameter(
             torch.rand([batch_size, prefix_length, model.config.n_embd], device=device))
     else:
+        # TODO: need to be updated
         perfect_prompt_ids = tokenizer.encode("The dog", return_tensors="pt").to(device)
         inputs_embeds = model.transformer.wte(perfect_prompt_ids)
         optimized_embeddings = torch.nn.Parameter(inputs_embeds.repeat(batch_size, 1, 1)).to(device)
 
-    with torch.no_grad():
-        u, s, vh = svd_model_embeddings(model)
+    if use_svd:
+        with torch.no_grad():
+            u, s, vh = svd_model_embeddings(model)
 
     lr = 10.0
     step_size = 500
@@ -156,7 +165,10 @@ def optimize_emeddings_decomposed_projections(desired_ending_ids, prefix_length,
         logits_so_far = None
         for i in range(desired_ending_length):
             if past is None:
-                inputs_embeds = torch.matmul(optimized_embeddings, s * vh)
+                if use_svd:
+                    inputs_embeds = torch.matmul(optimized_embeddings, s * vh)
+                else:
+                    inputs_embeds = optimized_embeddings
             model_outputs = model(past_key_values=past, inputs_embeds=inputs_embeds)
             logits = model_outputs.logits
             past = model_outputs.past_key_values
@@ -175,40 +187,45 @@ def optimize_emeddings_decomposed_projections(desired_ending_ids, prefix_length,
                                                           desired_ending_ids.view(-1).repeat(batch_size))
 
         # cosine similarity between the basis vectors and the optimized embeddings
-        # similarity = torch.abs(torch.matmul(optimized_embeddings, torch.transpose(u_subset, 0, 1))) # / torch.norm(optimized_embeddings, p=2)
-        # similarity = torch.matmul(optimized_embeddings.squeeze(0), torch.transpose(u_subset, 0, 1)) # / torch.norm(optimized_embeddings, p=2))
-        # similarity = torch.nn.CosineSimilarity(dim=1)(optimized_embeddings.squeeze(0), u)
-        # normalized_embeddings = optimized_embeddings / torch.norm(optimized_embeddings, p=2, dim=2).unsqueeze(2)
-        # similarity = torch.matmul(normalized_embeddings, torch.transpose(u, 0, 1))
+        # add 1's so that we use broadcasting
         v1 = optimized_embeddings.unsqueeze(1)
-        v2 = u.unsqueeze(0).unsqueeze(2)
+        if use_svd:
+            v2 = u.unsqueeze(0).unsqueeze(2)
+        else:
+            v2 = model.get_input_embeddings().weight.unsqueeze(0).unsqueeze(2)
         similarity = torch.nn.CosineSimilarity(dim=3)(v1, v2)
         mean_sim_to_basis = torch.mean(similarity)
         max_sim_to_basis = torch.mean(torch.max(similarity, dim=1).values)
-        # max_sim_to_basis = torch.max(similarity)
         _loss = w * right_context_probability - (1 - w) * max_sim_to_basis
-
-        # print(" - - - - - ")
-        # print(torch.cuda.memory_summary(abbreviated=True))
-        # print(torch.cuda.memory_allocated())
         _loss.backward(retain_graph=True)
-        # print(torch.cuda.memory_summary(abbreviated=True))
-        # print(torch.cuda.memory_allocated())
+
+        # projection:
+        proj_iter = 200
+        if False and iter % proj_iter == proj_iter - 1:
+            print("  / / / / / / /  projection \ \ \ \ \ \ \ ")
+            top_indices = torch.argmax(similarity, dim=1) # max over tokens
+            if use_svd:
+                optimized_embeddings = u[top_indices]
+            else:
+                optimized_embeddings = model.get_input_embeddings().weight[top_indices]
 
         # torch.nn.utils.clip_grad_norm_([optimized_logits], 1.0)
         optimizer.step()
         scheduler.step()
 
         if iter % 50 == 0:
-            print(" - - - - ")
             for batch_id in range(batch_size):
+                print(" - - - - ")
                 predicted, nll, _ = get_text_from_logits(logits_so_far[batch_id, :, :], tokenizer)
-                # most_similar = torch.argmax(similarity[batch_id, :, :],dim=1)
-                # prompt_text = tokenizer.decode(most_similar.tolist())
-                # print(f" * prefix: {prompt_text} (len: {prefix_length}) ---> prediction: {predicted} (len: {desired_ending_length})")
-                print(f" * prefix: (len: {prefix_length}) ---> prediction: {predicted} (len: {desired_ending_length})")
+                print(f" * prefix (len: {prefix_length}) ---> prediction: {predicted} (len: {desired_ending_length})")
+                for prefix_id in range(prefix_length):
+                    top_index = torch.argmax(similarity[batch_id, :, prefix_id])
+                    prompt_text = tokenizer.decode([top_index])
+                    print(f" ** top prefix {top_index}: {prompt_text}")
+                    top_scores, top_ids = torch.topk(similarity[batch_id, :, prefix_id], k=10)
+                    prompt_text = tokenizer.decode(top_ids.tolist())
+                    print(f" ** top 10 prefix: {prompt_text}")
 
-        #
         # grad_norms = [p.grad.data.norm(2).tolist() for p in
         #               list(filter(lambda p: p.grad is not None, model.parameters()))]
         # avg_grad_norm = sum(grad_norms) / len(grad_norms) if len(grad_norms) > 0 else 0.0
@@ -244,13 +261,13 @@ def optimize_emeddings_decomposed_projections(desired_ending_ids, prefix_length,
         optimizer.zero_grad()
 
 
-
 device = 'cuda'
 model_size = "distilgpt2"
 tokenizer = GPT2Tokenizer.from_pretrained(model_size)
 model = GPT2LMHeadModel.from_pretrained(model_size, output_hidden_states=True)
 model.to(device)
 model.eval()
+
 
 def experiment1():
     desired_ending = "jumped to bite."
@@ -264,7 +281,8 @@ def experiment2():
     desired_ending = "jumped to bite."
     desired_ending_ids = tokenizer.encode(desired_ending, return_tensors="pt").to(device)
     prefix_length = 2
-    batch_size = 3
-    optimize_emeddings_decomposed_projections(desired_ending_ids, prefix_length, batch_size, max_iter=10000)
+    batch_size = 10
+    optimize_emeddings_decomposed_projections(desired_ending_ids, prefix_length, batch_size, max_iter=10000, use_svd=True)
+
 
 experiment2()
