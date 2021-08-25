@@ -20,7 +20,13 @@ model.to(device)
 model.eval()
 
 
-def compute_continuous_prompts(desired_ending_ids, prefix_length, batch_size, max_iter=200, model_name=model):
+def compute_continuous_prompts(desired_ending_ids, prefix_length, batch_size,
+                               max_iter=200,
+                               model_name=model,
+                               lr=300.0,
+                               step_size=50,
+                               gamma=0.9):
+
     print(f"prefix_length: {prefix_length}, batch_size: {batch_size}, max_iter: {max_iter}")
     desired_ending_length = desired_ending_ids.size()[1]  # the length of the provided phrase
     assert desired_ending_length >= 1, "the provided sentence is a bit too short . . .  "
@@ -34,10 +40,8 @@ def compute_continuous_prompts(desired_ending_ids, prefix_length, batch_size, ma
         inputs_embeds = model_name.transformer.wte(perfect_prompt_ids)
         optimized_embeddings = torch.nn.Parameter(inputs_embeds.repeat(batch_size, 1, 1)).to(device)
 
-    lr = 2.0
-    step_size = 50
     optimizer = torch.optim.Adam([optimized_embeddings], lr=lr)
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer=optimizer, step_size=step_size, gamma=0.9)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer=optimizer, step_size=step_size)
     temperature = 0.01
     # length = prefix_length + desired_ending_length
 
@@ -56,19 +60,23 @@ def compute_continuous_prompts(desired_ending_ids, prefix_length, batch_size, ma
             logits_so_far = logits if logits_so_far is None else torch.cat((logits_so_far, logits), dim=1)
 
             # with straight-through
-            # if True:
-            #     logits_so_far = (logits_so_far.detach() / temperature - logits_so_far).detach() + logits_so_far
-
-            inputs_embeds = embed_inputs(model_name.get_input_embeddings(), logits/temperature, device=device)
+            if True:
+                logits_so_far = (logits_so_far.detach() / temperature - logits_so_far).detach() + logits_so_far
+                inputs_embeds = embed_inputs(model.get_input_embeddings(), logits, device=device)
+            else:
+                inputs_embeds = embed_inputs(model_name.get_input_embeddings(), logits / temperature, device=device)
 
         if iter % 100 == 99:
             print(" - - - - ")
-            predicted_logits = decode_with_embedding(model_name, desired_ending_length, temperature, device, optimized_embeddings)
+            predicted_logits = decode_with_embedding(model_name, desired_ending_length, temperature, device,
+                                                     optimized_embeddings)
             for batch_id in range(batch_size):
                 predicted, nll, _ = get_text_from_logits(logits_so_far[batch_id, :, :], tokenizer)
-                print(f" * batch ({batch_id}/{batch_size}) - iter: {iter}: prefix (len: {prefix_length}) ---> prediction: {predicted} (len: {desired_ending_length})")
+                print(
+                    f" * batch ({batch_id}/{batch_size}) - iter: {iter}: prefix (len: {prefix_length}) ---> prediction: {predicted} (len: {desired_ending_length})")
                 text, nll, _ = get_text_from_logits(predicted_logits[batch_id, :, :], tokenizer)
-                print(f" * batch ({batch_id}/{batch_size}) - iter: {iter}: model output (prompted with dense prompt): {text}")
+                print(
+                    f" * batch ({batch_id}/{batch_size}) - iter: {iter}: model output (prompted with dense prompt): {text}")
 
         # TODO: if the gold prediction is not in top-k (e.g., k == 1), punish bigly
         # compute loss with respect to the ending
@@ -122,14 +130,15 @@ def experiment1():
     # assert input_ids.size() == 2, f"sizes don't match {input_ids.size()} ({input_ids}) vs 2"
 
     # embeddings of a prefix: [num-batches x num-tokens x VOCAB]
-    compute_continuous_prompts(desired_ending_ids, prefix_length=2, batch_size=1, max_iter=2000)
+    compute_continuous_prompts(desired_ending_ids, prefix_length=2, batch_size=20, max_iter=2000, lr=300.0,
+                               step_size=50)
 
 
 def experiment2():
     '''
     how many of the prompts overlaps with the gold prompt?
     '''
-    batch_size = 200
+    batch_size = 20
     desired_ending = "jumped to bite."
     desired_ending_ids = tokenizer.encode(desired_ending, return_tensors="pt").to(device)
     # assert input_ids.size() == 2, f"sizes don't match {input_ids.size()} ({input_ids}) vs 2"
@@ -150,7 +159,7 @@ def experiment2():
     # average distance between any pair of embeddings
     for iter1 in range(batch_size):
         v1 = optimized_embeddings[iter1, :, :]
-        dist = torch.nn.CosineSimilarity()(v1, desired_prompt_embedding[0,:])
+        dist = torch.nn.CosineSimilarity()(v1, desired_prompt_embedding[0, :])
         cosine_distances_to_gold_prompt.append(sum(dist.tolist()) / len(dist.tolist()))
         for iter2 in range(batch_size):
             if iter1 == iter2:
@@ -167,5 +176,5 @@ def experiment2():
     print(f" * cosine_distances_to_gold_prompt: {len(cosine_distances_to_gold_prompt)}")
 
 
-# experiment1()
+experiment1()
 # experiment2()
