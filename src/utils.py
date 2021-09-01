@@ -56,7 +56,7 @@ def decode_with_argmax(model, length, input_ids1, device):
     for i in range(length):
         # if past is None:
         # inputs_embeds = model.transformer.wte(input_ids1)
-        # inputs_embeds = embed_inputs(model.get_input_embeddings(), input_one_hot.type(torch.FloatTensor)/ temperature, device='cuda', print_entropy=True)
+        # inputs_embeds = embed_inputs(model.get_input_embeddings(), input_one_hot.type(torchc)/ temperature, device='cuda', print_entropy=True)
         model_outputs = model(input_ids=input_ids1)
         # else:
         #     model_outputs = model(past_key_values=past, input_ids=input_ids1)
@@ -135,3 +135,21 @@ def svd_model_embeddings(model):
     assert diff < 0.07, f"the diff is larger than expected {diff}"
 
     return u, s, vh
+
+def project_ids(input_ids, model, tokenizer, device):
+    desired_beginning_ids = tokenizer.encode(input_ids, return_tensors="pt").to(device)
+    desired_beginning_one_hot = one_hot(desired_beginning_ids, dimension=tokenizer.vocab_size)
+    embeddings = torch.matmul(desired_beginning_one_hot.type(torch.FloatTensor).to(device), model.get_input_embeddings().weight.to(device))
+    return embeddings
+
+def project_embeddings(embedding, model, temp, with_streight_through=False):
+    logits = torch.matmul(embedding, torch.transpose(model.get_input_embeddings().weight, 0, 1))
+    # if with_streight_through:
+    #     logits = (logits.detach() / temp - logits).detach() + logits
+    # else:
+    #     logits = logits / temp
+    probs = F.softmax(logits, dim=-1)
+    # if with_streight_through:
+    #     probs = (probs.detach() - logits).detach() + logits
+
+    return probs
