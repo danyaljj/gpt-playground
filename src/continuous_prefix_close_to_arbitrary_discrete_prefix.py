@@ -57,7 +57,7 @@ def optimize_logits_and_embeddings_jointly(
 
         # TODO: if the gold prediction is not in top-k (e.g., k == 1), punish bigly
         # compute loss with respect to the ending
-        right_context_probability = nn.CrossEntropyLoss()(logits_so_far.view(-1, logits_so_far.size(-1)),
+        right_context_logits = nn.CrossEntropyLoss()(logits_so_far.view(-1, logits_so_far.size(-1)),
                                                           desired_ending_ids.view(-1).repeat(batch_size))
 
         probs_so_far = F.softmax(logits_so_far, dim=-1)
@@ -66,9 +66,8 @@ def optimize_logits_and_embeddings_jointly(
         if iter < 20:
             _loss = embedding_loss
         else:
-            _loss = w * right_context_probability + (1 - w) * (embedding_loss)
+            _loss = w * right_context_logits + (1 - w) * (embedding_loss)
         _loss.backward(retain_graph=True)
-        # torch.nn.utils.clip_grad_norm_([optimized_logits], 1.0)
         optimizer.step()
         scheduler.step()
 
@@ -84,13 +83,12 @@ def optimize_logits_and_embeddings_jointly(
         output = {
             "total_loss": _loss.detach().tolist(),
             "total_loss_log": torch.log(_loss).detach().tolist(),
-            "right_context_probability": right_context_probability.detach().tolist(),
-            "right_context_probability_log": torch.log(right_context_probability).detach().tolist(),
+            "right_context_logits": right_context_logits.detach().tolist(),
+            "right_context_logits_log": torch.log(right_context_logits).detach().tolist(),
+            'right_context_avg_probs': right_context_avg_probs.detach().tolist(),
             'embedding_loss': embedding_loss.detach().tolist(),
             'embedding_loss_log': torch.log(embedding_loss).detach().tolist(),
-            # 'avg_grad_norm_log': math.log(avg_grad_norm),
             'lr': scheduler.get_last_lr()[0],
-            'right_context_avg_probs': right_context_avg_probs.detach().tolist(),
         }
         if verbose:
             wandb.log(output)
