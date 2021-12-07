@@ -1,6 +1,5 @@
 from transformers import GPT2Tokenizer, GPT2LMHeadModel
 import torch
-import torch.nn.functional as F
 from torch import nn
 import wandb
 from utils import embed_inputs, get_text_from_logits
@@ -31,7 +30,7 @@ assert phrase_length < 20, "the provided sentence is a bit too long . . .  "
 prefix_length = 2
 batch_size = 1
 
-if False:
+if True:
     # uniform distribution over all the vocab
     optimized_logits = torch.nn.Parameter(
         torch.randn([batch_size, prefix_length, tokenizer.vocab_size], device=device)
@@ -43,46 +42,52 @@ else:
         optimized_logits[:, position_id, word_id] = 0
     optimized_logits = torch.nn.Parameter(optimized_logits)
 
-lr = 100000
-step_size = 1000
+lr = 1000
+step_size = 100
 optimizer = torch.optim.Adam([optimized_logits], lr=lr)
 scheduler = torch.optim.lr_scheduler.StepLR(optimizer=optimizer, step_size=step_size, gamma=0.9)
-dynamic_temperature = 1000
+# dynamic_temperature = 1000
+temperature = 0.01
 length = prefix_length + phrase_length
+torch.autograd.set_detect_anomaly(True)
 
 for iter in range(1000):
-    optimized_probs = torch.nn.Softmax(dim=2)(optimized_logits / dynamic_temperature)
+    optimized_probs = torch.nn.Softmax(dim=2)(optimized_logits / temperature)
+    optimized_probs_no_temp = torch.nn.Softmax(dim=2)(optimized_logits / 10)
+    optimized_probs_straight_through = (optimized_probs - optimized_probs_no_temp).detach() + optimized_probs_no_temp
     _entropy = -torch.mean(
         # entropy for each position
         torch.sum(torch.log(optimized_probs + 0.000001) * optimized_probs, dim=2)
     )
 
     # iter % 5 == 0 and
-    if _entropy.detach().tolist() > 6:
-        dynamic_temperature *= 0.9999
+    # if _entropy.detach().tolist() > 6:
+    #     dynamic_temperature *= 0.9999
 
-    temperature = 0.01
     past = None
     inputs_embeds = None
     logits_so_far = None
     for i in range(phrase_length):
         if past is None:
             # the embeddings extracted from the optimized parameters
-            inputs_embeds = embed_inputs(model.get_input_embeddings(), optimized_probs, device=device)
+            inputs_embeds = embed_inputs(model.get_input_embeddings(), optimized_probs_straight_through, device=device)
         model_outputs = model(past_key_values=past, inputs_embeds=inputs_embeds)
         logits = model_outputs.logits
         past = model_outputs.past_key_values
         logits = logits[:, -1, :]
         logits = logits.unsqueeze(1)
         logits_so_far = logits if logits_so_far is None else torch.cat((logits_so_far, logits), dim=1)
-        inputs_embeds = embed_inputs(model.get_input_embeddings(), logits / temperature, device=device)
+        # if True:
+        #     logits_so_far = (logits_so_far.detach() / temperature - logits_so_far).detach() + logits_so_far
+        inputs_embeds = embed_inputs(model.get_input_embeddings(), logits_so_far, device=device)
 
         # if i < phrase_length:
         if i + 1 == phrase_length:
+            print(" . . . . last step . . . . ")
             # TODO: if the gold prediction is not in top-k (e.g., k == 1), punish bigly
             # compute loss with respect to the ending
             _right_context_probs = nn.CrossEntropyLoss()(logits_so_far.view(-1, logits_so_far.size(-1)),
-                                                         right_context_ids.view(-1)[0:i+1].repeat(batch_size))
+                                                         right_context_ids.view(-1)[0:i + 1].repeat(batch_size))
 
             # _sum1_loss = torch.norm(torch.sum(optimized_probs, dim=2) - 1.0)
             # _sum1_loss = torch.nn.MSELoss()(torch.exp(optimized_logits), torch.ones(prefix_length))
@@ -103,19 +108,22 @@ for iter in range(1000):
             #         optimized_logits += 0.01 * torch.randn(optimized_logits.size()).to('cuda')
 
             print(" - - - - ")
-            print(f" * temperature: {dynamic_temperature}")
+            # print(f" * temperature: {dynamic_temperature}")
             for batch_id in range(batch_size):
                 prefix, nll, _ = get_text_from_logits(optimized_logits[batch_id, :, :], tokenizer)
                 predicted, nll, _ = get_text_from_logits(logits_so_far[batch_id, :, :], tokenizer)
                 print(f" * prefix: {prefix} <--> generated text: {predicted}")
 
-            grad_norms = [p.grad.data.norm(2).tolist() for p in list(filter(lambda p: p.grad is not None, model.parameters()))]
+            grad_norms = [p.grad.data.norm(2).tolist() for p in
+                          list(filter(lambda p: p.grad is not None, model.parameters()))]
             avg_grad_norm = sum(grad_norms) / len(grad_norms) if len(grad_norms) > 0 else 0.0
 
             _sum = torch.sum(optimized_probs)
             wandb.log({
                 "total_loss": _loss.detach().tolist(),
+                "total_loss_log": torch.log(_loss).detach().tolist(),
                 "_right_context_probs": _right_context_probs.detach().tolist(),
+                "_right_context_probs_log": torch.log(_right_context_probs).detach().tolist(),
                 "sum": _sum.detach().tolist(),
                 '_entropy': _entropy.detach().tolist(),
                 # '_entropy2': _entropy2.detach().tolist(),

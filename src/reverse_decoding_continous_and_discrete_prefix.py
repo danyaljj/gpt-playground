@@ -285,4 +285,5 @@ def experiment2():
     optimize_emeddings_decomposed_projections(desired_ending_ids, prefix_length, batch_size, max_iter=10000, use_svd=True)
 
 
-experiment2()
+experiment1()
+# experiment2()

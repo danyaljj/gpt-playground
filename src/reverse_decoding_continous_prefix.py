@@ -30,7 +30,7 @@ def compute_continuous_prompts(desired_ending_ids, prefix_length, batch_size, ma
         optimized_embeddings = torch.nn.Parameter(
             torch.rand([batch_size, prefix_length, model_name.config.n_embd], device=device))
     else:
-        perfect_prompt_ids = tokenizer.encode("The dog", return_tensors="pt").to(device)
+        perfect_prompt_ids = tokenizer.encode('The big brown dog looked angry at the policeman because he was walking behind', return_tensors="pt").to(device)
         inputs_embeds = model_name.transformer.wte(perfect_prompt_ids)
         optimized_embeddings = torch.nn.Parameter(inputs_embeds.repeat(batch_size, 1, 1)).to(device)
 
@@ -74,6 +74,10 @@ def compute_continuous_prompts(desired_ending_ids, prefix_length, batch_size, ma
         # compute loss with respect to the ending
         right_context_probability = nn.CrossEntropyLoss()(logits_so_far.view(-1, logits_so_far.size(-1)),
                                                           desired_ending_ids.view(-1).repeat(batch_size))
+
+        probs_so_far = F.softmax(logits_so_far, dim=-1)
+        right_context_avg_probs = -nn.NLLLoss()(probs_so_far.view(-1, probs_so_far.size(-1)),desired_ending_ids.view(-1).repeat(batch_size))
+
         _loss = right_context_probability
         _loss.backward(retain_graph=True)
         # torch.nn.utils.clip_grad_norm_([optimized_logits], 1.0)
@@ -89,7 +93,9 @@ def compute_continuous_prompts(desired_ending_ids, prefix_length, batch_size, ma
             "right_context_probability": right_context_probability.detach().tolist(),
             "right_context_probability_log": torch.log(right_context_probability).detach().tolist(),
             'avg_grad_norm_log': math.log(avg_grad_norm),
-            'lr': scheduler.get_last_lr()[0]
+            'lr': scheduler.get_last_lr()[0],
+            'right_context_avg_probs': right_context_avg_probs.detach().tolist(),
+            # 'right_context_avg_probs_log': torch.log(right_context_avg_probs).detach().tolist()
         }
 
         # measuring the diversity of the prompts
@@ -117,13 +123,12 @@ def compute_continuous_prompts(desired_ending_ids, prefix_length, batch_size, ma
 
 
 def experiment1():
-    desired_ending = "jumped to bite."
+    desired_ending = "him."
     desired_ending_ids = tokenizer.encode(desired_ending, return_tensors="pt").to(device)
     # assert input_ids.size() == 2, f"sizes don't match {input_ids.size()} ({input_ids}) vs 2"
 
     # embeddings of a prefix: [num-batches x num-tokens x VOCAB]
-    compute_continuous_prompts(desired_ending_ids, prefix_length=2, batch_size=1, max_iter=2000)
-
+    compute_continuous_prompts(desired_ending_ids, prefix_length=2, batch_size=10, max_iter=2000)
                                # lr = 2.0, step_size = 50, gamma = 0.9)
 
 
