@@ -54,7 +54,6 @@ def decode_with_argmax(model, length, input_ids1, device):
     '''
     GPT2 decoding via dense representations (no arg-max)
     '''
-    past = None
     logits_so_far = None
     for i in range(length):
         # if past is None:
@@ -114,8 +113,9 @@ def one_hot(tensor, dimension):
     while len(tensor.shape) < 2:
         tensor = tensor.unsqueeze(0)
     onehot = torch.LongTensor(tensor.shape[0], tensor.shape[1], dimension).to(tensor.device)
-    onehot.zero_().scatter_(2, tensor.unsqueeze(-1), 1)
+    onehot.zero_().scatter_(2, tensor.unsqueeze(-1).to(torch.int64), 1)
     return onehot
+
 
 def plot_histogram(x):
     import matplotlib.pyplot as plt
