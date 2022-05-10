@@ -148,7 +148,7 @@ if __name__ == "__main__":
     print(json.dumps(vars(args)))
 
     tokenizer = BertTokenizer.from_pretrained("google/multiberts-seed_0")
-    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+    # device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     bert_config = BertModel.from_pretrained("google/multiberts-seed_0").config
 
     path = f'ensembed_bert_{args.num_models}'

@@ -18,7 +18,7 @@ multiberts = [ f'google/multiberts-seed_{idx}' for idx in range(0, 25) ]
 models = [
     # "bert-base-cased",
     # "bert-large-cased",
-    "bert-base-uncased",
+    # "bert-base-uncased",
     "bert-large-uncased",
     # 'gpt2',
     # 'gpt2-medium',
@@ -59,7 +59,17 @@ epochs = [
 ]
 
 learning_rates = [
-    3e-5, 2e-5, 1e-5, 5e-5, 4e-5
+    2e-5, 1e-5, 4e-5 # 5e-5, 3e-5,
+]
+
+num_models = [
+     # 1, 2, 3, 4, 5, 6, 7, 8, 9, 10
+    # 1, 3,
+    5# , 7, 9
+]
+
+non_linearity = [
+    False
 ]
 
 
@@ -67,39 +77,43 @@ d1 = yaml.load(default_yaml)
 
 
 for model in models:
-    for train_size in train_sizes:
-        for epoch in epochs:
-            for learning_rate in learning_rates:
-                d = copy.deepcopy(d1)
+    for num in num_models:
+        for train_size in train_sizes:
+            for epoch in epochs:
+                for learning_rate in learning_rates:
+                    d = copy.deepcopy(d1)
 
-                assert d['tasks'][0]['context']['cluster'] == "ai2/mosaic-cirrascale"
-                d['tasks'][0]['context']['cluster'] = cluster
+                    assert d['tasks'][0]['context']['cluster'] == "ai2/mosaic-cirrascale"
+                    d['tasks'][0]['context']['cluster'] = cluster
 
-                name = f"experiment_train_size={train_size}-model={model.replace('/', '_')}-lr={learning_rate}-epoch={epoch}"
-                d['description'] = name
+                    name = f"experiment_train_size={train_size}-model={model.replace('/', '_')}-lr={learning_rate}-epoch={epoch}-num_models={num}"
+                    d['description'] = name
 
-                task_idx = 3
-                assert d['tasks'][0]['arguments'][task_idx] == 'bert-base-cased'
-                d['tasks'][0]['arguments'][task_idx] = model
+                    task_idx = 3
+                    assert d['tasks'][0]['arguments'][task_idx] == 'bert-base-cased'
+                    d['tasks'][0]['arguments'][task_idx] = model
 
-                task_idx = 5
-                assert d['tasks'][0]['arguments'][task_idx] == 1000, d['tasks'][0]['arguments'][task_idx]
-                d['tasks'][0]['arguments'][task_idx] = train_size
+                    task_idx = 5
+                    assert d['tasks'][0]['arguments'][task_idx] == 1000, d['tasks'][0]['arguments'][task_idx]
+                    d['tasks'][0]['arguments'][task_idx] = train_size
 
-                task_idx = 7
-                assert d['tasks'][0]['arguments'][task_idx] == 5, d['tasks'][0]['arguments'][task_idx]
-                d['tasks'][0]['arguments'][task_idx] = epoch
+                    task_idx = 7
+                    assert d['tasks'][0]['arguments'][task_idx] == 5, d['tasks'][0]['arguments'][task_idx]
+                    d['tasks'][0]['arguments'][task_idx] = epoch
 
-                task_idx = 9
-                assert d['tasks'][0]['arguments'][task_idx] == 0.001, d['tasks'][0]['arguments'][task_idx]
-                d['tasks'][0]['arguments'][task_idx] = learning_rate
+                    task_idx = 9
+                    assert d['tasks'][0]['arguments'][task_idx] == 0.001, d['tasks'][0]['arguments'][task_idx]
+                    d['tasks'][0]['arguments'][task_idx] = learning_rate
 
+                    task_idx = 11
+                    assert d['tasks'][0]['arguments'][task_idx] == 1, d['tasks'][0]['arguments'][task_idx]
+                    d['tasks'][0]['arguments'][task_idx] = num
 
-                fn = "yaml_files/{}.yaml".format(name)
-                file = open(fn, "w")
-                yaml.dump(d, file, default_flow_style=True)
-                file.close()
+                    fn = "yaml_files/{}.yaml".format(name)
+                    file = open(fn, "w")
+                    yaml.dump(d, file, default_flow_style=True)
+                    file.close()
 
-                cmd = "beaker experiment create {} --workspace ai2/ensembles".format(fn)
-                subprocess.Popen(cmd, shell=True)
-                time.sleep(0.1)
+                    cmd = "beaker experiment create {} --workspace ai2/ensembles".format(fn)
+                    subprocess.Popen(cmd, shell=True)
+                    time.sleep(0.1)

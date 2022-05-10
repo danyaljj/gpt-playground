@@ -55,8 +55,7 @@ class DataCollatorForMultipleChoice:
         batch["labels"] = torch.tensor([int(x) for x in labels], dtype=torch.int64)
         return batch
 
-
-def main(model_name, train_size, dev_size, test_size, batch_size, epochs, save_dir, learning_rate):
+def main(model_name, train_size, dev_size, test_size, batch_size, epochs, save_dir, learning_rate, non_linearity, num_models):
     # dataset = load_dataset("glue", "mrpc")
     # dataset = load_dataset("boolq")
     # datasets = load_dataset("hellaswag", cache_dir="/data")
@@ -173,8 +172,8 @@ def main(model_name, train_size, dev_size, test_size, batch_size, epochs, save_d
     # show_one(train_dataset[0])
 
     # model = AutoModelForMultipleChoice.from_pretrained(model_name)
-    non_linearity = True
-    num_models = 2
+    # non_linearity = True
+    # num_models = 2
     bert_config = BertModel.from_pretrained("google/multiberts-seed_0").config
     config = EnsembledBertConfig(num_models=num_models, non_linearity=non_linearity, **bert_config.to_dict())
     model = EnsembledBertForMultipleChoice(config)
@@ -241,6 +240,8 @@ def main(model_name, train_size, dev_size, test_size, batch_size, epochs, save_d
     metrics['model_name'] = model_name
     metrics['learning_rate'] = learning_rate
     metrics['epochs'] = epochs
+    metrics['num_models'] = num_models
+    metrics['non_linearity'] = non_linearity
     metrics['batch_size'] = batch_size
     metrics['max_eval_accuracy'] = max([x['eval_accuracy'] for x in metrics['log_history'] if 'eval_accuracy' in x])
     metrics['min_eval_loss'] = min([x['eval_loss'] for x in metrics['log_history'] if 'eval_loss' in x])
@@ -269,11 +270,19 @@ if __name__ == "__main__":
     parser.add_argument("--epochs")
     parser.add_argument("--save_dir")
     parser.add_argument("--learning_rate")
+    parser.add_argument("--non_linearity")
+    parser.add_argument("--num_models")
     args = parser.parse_args()
 
     main(
         args.model,
-        int(args.train_size), int(args.dev_size), int(args.test_size),
-        int(args.batch_size), int(args.epochs),
-        args.save_dir, float(args.learning_rate)
+        train_size = int(args.train_size),
+        dev_size = int(args.dev_size),
+        test_size = int(args.test_size),
+        batch_size = int(args.batch_size),
+        epochs = int(args.epochs),
+        save_dir = args.save_dir,
+        learning_rate = float(args.learning_rate),
+        non_linearity=args.non_linearity,
+        num_models=int(args.num_models),
     )
