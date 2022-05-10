@@ -10,6 +10,7 @@ from typing import Optional, Union
 import torch
 from multiple_choice_ensemble import EnsembledBertForMultipleChoice, EnsembledBertConfig
 
+
 # import datasets
 
 
@@ -55,7 +56,19 @@ class DataCollatorForMultipleChoice:
         batch["labels"] = torch.tensor([int(x) for x in labels], dtype=torch.int64)
         return batch
 
-def main(model_name, train_size, dev_size, test_size, batch_size, epochs, save_dir, learning_rate, non_linearity, num_models):
+
+def main(
+        model_name=str,
+        train_size=int,
+        dev_size=int,
+        test_size=int,
+        batch_size=int,
+        epochs=int,
+        save_dir=str,
+        learning_rate=float,
+        non_linearity=bool,
+        num_models=int
+):
     # dataset = load_dataset("glue", "mrpc")
     # dataset = load_dataset("boolq")
     # datasets = load_dataset("hellaswag", cache_dir="/data")
@@ -178,6 +191,7 @@ def main(model_name, train_size, dev_size, test_size, batch_size, epochs, save_d
     config = EnsembledBertConfig(num_models=num_models, non_linearity=non_linearity, **bert_config.to_dict())
     model = EnsembledBertForMultipleChoice(config)
     model.initialize_with_existing_berts(model_names_list=None, num_models=num_models)
+
     # model = EnsembledBertForMultipleChoice.from_pretrained("ensembed_bert_2")
 
     # metric = load_metric("accuracy")
@@ -233,7 +247,6 @@ def main(model_name, train_size, dev_size, test_size, batch_size, epochs, save_d
     trainer.save_model(save_dir)
     trainer.save_state()
 
-
     import json
     states = open(save_dir + '/trainer_state.json', 'r')
     metrics = json.load(states)
@@ -252,7 +265,6 @@ def main(model_name, train_size, dev_size, test_size, batch_size, epochs, save_d
         metrics[k] = v
     for k, v in m2.items():
         metrics[k] = v
-
 
     out = open(save_dir + '/metrics.json', 'w')
     json.dump(metrics, out)
@@ -274,18 +286,19 @@ if __name__ == "__main__":
     parser.add_argument("--num_models")
     args = parser.parse_args()
 
-    assert args.non_linearity in ['True', 'False'], f"{args.non_linearity} - {type(args.non_linearity)}"
-    args.non_linearity = args.non_linearity == 'True'
+    assert args.non_linearity in ['True', 'true', 'False',
+                                  'false'], f"{args.non_linearity} - {type(args.non_linearity)}"
+    args.non_linearity = args.non_linearity in ['True', 'true']
 
     main(
         args.model,
-        train_size = int(args.train_size),
-        dev_size = int(args.dev_size),
-        test_size = int(args.test_size),
-        batch_size = int(args.batch_size),
-        epochs = int(args.epochs),
-        save_dir = args.save_dir,
-        learning_rate = float(args.learning_rate),
+        train_size=int(args.train_size),
+        dev_size=int(args.dev_size),
+        test_size=int(args.test_size),
+        batch_size=int(args.batch_size),
+        epochs=int(args.epochs),
+        save_dir=args.save_dir,
+        learning_rate=float(args.learning_rate),
         non_linearity=args.non_linearity,
         num_models=int(args.num_models),
     )

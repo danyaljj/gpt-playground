@@ -36,6 +36,7 @@ class EnsembledBertForMultipleChoice(PreTrainedModel):
         )  # initialize with empty models
 
         # MSCLAR: simplest is a linear layer, check bounds of this and then also include some non-linearity nn.ReLU()
+        assert type(self.config.non_linearity) == bool, "non_linearity must be boolean but it is {}".format(type(self.config.non_linearity))
         if self.config.non_linearity:
             hidden_size = len(self.bert_models) * self.config.hidden_size // 5
             self.cls = torch.nn.Sequential(
@@ -73,10 +74,10 @@ class EnsembledBertForMultipleChoice(PreTrainedModel):
             return_dict: Optional[bool] = None,
     ) -> Union[Tuple[torch.Tensor], MultipleChoiceModelOutput]:
 
-        print('forward')
-        for i in range(len(self.bert_models)):
-            print(self.bert_models[i].encoder.layer[0].output.dense.bias[:10])
-        print('')
+        # print('forward')
+        # for i in range(len(self.bert_models)):
+        #     print(self.bert_models[i].encoder.layer[0].output.dense.bias[:10])
+        # print('')
 
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
         num_choices = input_ids.shape[1] if input_ids is not None else inputs_embeds.shape[1]

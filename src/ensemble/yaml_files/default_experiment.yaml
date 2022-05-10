@@ -2,7 +2,7 @@ version: v2-alpha
 description: prompting1
 tasks:
   - image:
-      beaker: 01G2QTAP9NQ7EC5MYY9SK4W038
+      beaker: 01G2R09935X3GQC6GQRDZBJ30D
     arguments: [
         python3,
         classification.py,
@@ -14,12 +14,12 @@ tasks:
         --non_linearity, True,
         --dev_size, 299,
         --test_size, 1172,
-        --batch_size, 16,
+        --batch_size, 2,
         --save_dir, /outputs
     ]
     envVars:
       - name: CUDA_VISIBLE_DEVICES
-        value: "0,1"
+        value: "0"
       - name: WANDB_DISABLED
         value: "true"
     result:

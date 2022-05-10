@@ -64,13 +64,13 @@ learning_rates = [
 
 num_models = [
      # 1, 2, 3, 4, 5, 6, 7, 8, 9, 10
-    # 1, 3,
-    5# , 7, 9
+    1, 3,
+    # 5# , 7, 9
 ]
 
-non_linearity = [
-    False
-]
+# non_linearity = [
+#     False
+# ]
 
 
 d1 = yaml.load(default_yaml)
