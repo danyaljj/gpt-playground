@@ -128,6 +128,45 @@ def experiment1():
         print(f" => count: {count}")
         discrete_prompt_from_endings(right_item_ids[:count])
 
-experiment1()
-# experiment0()
+
+
+from google_ngram_downloader import readline_google_store
+import json
+
+def experiment_unigrams():
+    # extract counts for GPT vocabulary
+    # count_map = {}
+    fout = open("unigram_file.jsonl", "w")
+    counter = 0
+    for fname, url, records in readline_google_store(ngram_len=1):
+        print(fname)
+        print(url)
+        for r in records:
+            text = r.ngram
+            year = r.year
+            if year < 2005 or year > 2008:
+                continue
+            match_count = r.match_count
+            volume_count = r.volume_count
+            indices = encoder.encoder.encode(text)
+            if len(indices) == 1:
+                counter += 1
+                line= {
+                    'idx': indices[0],
+                    'text': text,
+                    'year': year,
+                    'match_count': match_count,
+                    'volume_count': volume_count,
+                }
+                fout.write(json.dumps(line) + "\n")
+                if counter % 1000 == 0:
+                    print(f" * map size: {counter} -> {line}")
+
+
+
+
+experiment0()
+# experiment1()
+# experiment_unigrams()
+
 

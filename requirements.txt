@@ -2,3 +2,6 @@ transformers==4.2.1
 nltk
 redis
 datasets
+torch
+sklearn
+wandb
