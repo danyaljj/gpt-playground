@@ -274,6 +274,9 @@ if __name__ == "__main__":
     parser.add_argument("--num_models")
     args = parser.parse_args()
 
+    assert args.non_linearity is ['True', 'False'], f"{args.non_linearity} - {type(args.non_linearity)}"
+    args.non_linearity = args.non_linearity == 'true'
+
     main(
         args.model,
         train_size = int(args.train_size),

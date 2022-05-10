@@ -11,7 +11,7 @@ tasks:
         --epochs, 5,
         --learning_rate, 0.001,
         --num_models, 1,
-        --non_linearity, False,
+        --non_linearity, True,
         --dev_size, 299,
         --test_size, 1172,
         --batch_size, 16,
