@@ -2,7 +2,7 @@ version: v2-alpha
 description: prompting1
 tasks:
   - image:
-      beaker: 01G2V8AYPSZ74418B8FM9QSHRN
+      beaker: 01G2VPAJ7ZB7D7866FG4YKES8X
     arguments: [
         python3,
         classification.py,
@@ -29,6 +29,6 @@ tasks:
       gpuCount: 2
     context:
       cluster: ai2/mosaic-cirrascale
-      priority: normal
+      priority: low
 
 

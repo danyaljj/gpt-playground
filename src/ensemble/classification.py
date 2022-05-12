@@ -9,7 +9,7 @@ from transformers.tokenization_utils_base import PreTrainedTokenizerBase, Paddin
 from typing import Optional, Union
 import torch
 from multiple_choice_ensemble import EnsembledBertForMultipleChoice, EnsembledBertConfig
-import datasets
+from sklearn.metrics import accuracy_score, recall_score, precision_score, f1_score, precision_recall_fscore_support
 
 
 @dataclass
@@ -28,8 +28,6 @@ class DataCollatorForMultipleChoice:
             label_name = "label"
         elif "labels" in features[0].keys():
             label_name = "labels"
-        elif "answerKey" in features[0].keys():
-            label_name = "answerKey"
         else:
             raise ValueError("No label found in features: {}".format(features[0].keys()))
 
@@ -148,10 +146,10 @@ def main(
         # Repeat each first sentence four times to go with the four possibilities of second sentences.
         first_sentences = []
         second_sentences = []
-        for x in examples:
-            question = f"{x['question']} - Passage: {x['passage']}"
-            first_sentences.append([question, question])
-            second_sentences.append([[" (1) no ", " (2) yes "]])
+        for q, p in zip(examples["question"], examples["passage"]):
+            input = f"{q} - Passage: {p}"
+            first_sentences.append([input, input])
+            second_sentences.append([" (1) no ", " (2) yes "])
 
         # Flatten everything
         first_sentences = sum(first_sentences, [])
@@ -166,10 +164,10 @@ def main(
         # Repeat each first sentence four times to go with the four possibilities of second sentences.
         first_sentences = []
         second_sentences = []
-        for x in examples:
-            question = f"{x['premise']} - Choice 1: {x['choice1']} - Choice 2: {x['choice2']}"
+        for p, c1, c2 in zip(examples["premise"], examples["choice1"], examples["choice2"]):
+            question = f"{p} - Choice 1: {c1} - Choice 2: {c2}"
             first_sentences.append([question, question])
-            second_sentences.append([[" (1) choice 1 ", " (2) choice 2 "]])
+            second_sentences.append([" (1) choice 1 ", " (2) choice 2 "])
 
         # Flatten everything
         first_sentences = sum(first_sentences, [])
@@ -184,10 +182,10 @@ def main(
         # Repeat each first sentence four times to go with the four possibilities of second sentences.
         first_sentences = []
         second_sentences = []
-        for x in examples:
-            input = f"Sent1: {x['sentence1']} - Sent2: {x['sentence2']}"
+        for s1, s2 in zip(examples['sentence1'], examples['sentence2']):
+            input = f"Sent1: {s1} - Sent2: {s2}"
             first_sentences.append([input, input])
-            second_sentences.append([[" (1) Sent1 ", " (2) Sent2 "]])
+            second_sentences.append([" (1) Sent1 ", " (2) Sent2 "])
 
         # Flatten everything
         first_sentences = sum(first_sentences, [])
@@ -201,9 +199,15 @@ def main(
     def compute_metrics_accuracy(eval_predictions):
         predictions, label_ids = eval_predictions
         preds = np.argmax(predictions, axis=1)
-        return {"accuracy": (preds == label_ids).astype(np.float32).mean().item()}
+        accuracy = (preds == label_ids).astype(np.float32).mean().item()
+        precision, recall, f_score, accuracy3 = precision_recall_fscore_support(y_true=label_ids, y_pred=preds, average='macro')
 
-
+        return {
+            "accuracy": accuracy,
+            "recall": recall,
+            "precision": precision,
+            "f1": f_score,
+        }
 
     if dataset_name == "arc_easy":
         datasets = load_dataset("ai2_arc", "ARC-Easy")
@@ -222,24 +226,24 @@ def main(
         preprocess_function = preprocess_function_hellaswag
         compute_metrics = compute_metrics_accuracy
     elif dataset_name == "mrpc":
-        dataset = load_dataset("glue", "mrpc")
+        datasets = load_dataset("glue", "mrpc")
         preprocess_function = preprocess_function_mrpc
-        compute_metrics = load_metric("glue", "mrpc")
+        compute_metrics = compute_metrics_accuracy
     elif dataset_name == "boolq":
-        dataset = load_dataset("super_glue", "boolq")
+        datasets = load_dataset("super_glue", "boolq")
         preprocess_function = preprocess_function_boolq
-        compute_metrics = load_metric("super_glue", "boolq")
+        compute_metrics = compute_metrics_accuracy
     elif dataset_name == "copa":
-        dataset = load_dataset("super_glue", "copa")
+        datasets = load_dataset("super_glue", "copa")
         preprocess_function = preprocess_function_copa
-        compute_metrics = load_metric("super_glue", "copa")
+        compute_metrics = compute_metrics_accuracy
     elif dataset_name == "dream":
-        dataset = load_dataset("dream")
+        datasets = load_dataset("dream")
         preprocess_function = None
         compute_metrics = compute_metrics_accuracy
         raise NotImplementedError
     elif dataset_name == "record":
-        dataset = load_dataset("super_glue", "record")
+        datasets = load_dataset("super_glue", "record")
         preprocess_function = None
         compute_metrics = load_metric("super_glue", "record")
         raise NotImplementedError
@@ -251,15 +255,15 @@ def main(
     encoded_datasets = datasets.map(preprocess_function, batched=True)
 
     train_dataset = encoded_datasets["train"].shuffle(seed=42)
-    if train_size < 0:
+    if train_size > 0:
         train_dataset = train_dataset.select(range(train_size))
 
     dev_dataset = encoded_datasets["validation"].shuffle(seed=42)
-    if dev_size < 0:
+    if dev_size > 0:
         dev_dataset = dev_dataset.select(range(dev_size))
 
     test_dataset = encoded_datasets["test"].shuffle(seed=42)
-    if test_size < 0:
+    if test_size > 0:
         test_dataset = test_dataset.select(range(test_size))
 
 
@@ -306,8 +310,13 @@ def main(
     metrics['max_eval_accuracy'] = max([x['eval_accuracy'] for x in metrics['log_history'] if 'eval_accuracy' in x])
     metrics['min_eval_loss'] = min([x['eval_loss'] for x in metrics['log_history'] if 'eval_loss' in x])
 
-    m1 = trainer.evaluate(test_dataset, metric_key_prefix="final_test")
     m2 = trainer.evaluate(dev_dataset, metric_key_prefix="final_dev")
+
+    if dataset_name in ['copa']:
+        m1 = m2 # don't evaluate on the test set
+    else:
+        m1 = trainer.evaluate(test_dataset, metric_key_prefix="final_test")
+
     for k, v in m1.items():
         metrics[k] = v
     for k, v in m2.items():

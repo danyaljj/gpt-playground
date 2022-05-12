@@ -3,3 +3,4 @@ datasets
 torch
 sklearn
 wandb
+pyarrow==8.0.0

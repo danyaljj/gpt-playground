@@ -56,7 +56,7 @@ train_sizes = [
 
 epochs = [
     # 2, 3, 5, 7, #
-    7, 10, 13, 15
+    9, 11, 13, 15
 ]
 
 learning_rates = [
@@ -66,64 +66,77 @@ learning_rates = [
 num_models = [
      # 1, 2, 3, 4, 5, 6, 7, 8, 9, 10
     1, 2, 4, 8, 16, 25
+    # 1
 ]
 
-# non_linearity = [
-#     False
-# ]
+non_linearity = [
+    True, False
+    # True
+]
 
 
 datasets = [
-    'arc_hard'
+    # "copa",
+    "boolq",
+    "mrpc",
+    "hellaswag",
+    "swag",
+    'arc_easy',
+    'arc_hard',
 ]
 
 
 d1 = yaml.load(default_yaml)
 
 
-for model in models:
-    for num in num_models:
-        for train_size in train_sizes:
-            for epoch in epochs:
-                for learning_rate in learning_rates:
-                    for dataset in datasets:
-                        d = copy.deepcopy(d1)
+for dataset in datasets:
+    for model in models:
+        for num in num_models:
+            for train_size in train_sizes:
+                for epoch in epochs:
+                    for learning_rate in learning_rates:
+                        for nl in non_linearity:
+                            d = copy.deepcopy(d1)
 
-                        assert d['tasks'][0]['context']['cluster'] == "ai2/mosaic-cirrascale"
-                        d['tasks'][0]['context']['cluster'] = cluster
+                            assert d['tasks'][0]['context']['cluster'] == "ai2/mosaic-cirrascale"
+                            d['tasks'][0]['context']['cluster'] = cluster
 
-                        name = f"experiment_train_size={train_size}-model={model.replace('/', '_')}-lr={learning_rate}-epoch={epoch}-num_models={num}-dataset={dataset}"
-                        d['description'] = name
+                            name = f"experiment_train_size={train_size}-model={model.replace('/', '_')}-lr={learning_rate}-epoch={epoch}-num_models={num}-dataset={dataset}-non_linearity={nl}"
+                            d['description'] = name
 
-                        task_idx = 3
-                        assert d['tasks'][0]['arguments'][task_idx] == 'bert-base-cased'
-                        d['tasks'][0]['arguments'][task_idx] = model
+                            task_idx = 3
+                            assert d['tasks'][0]['arguments'][task_idx] == 'bert-base-cased'
+                            d['tasks'][0]['arguments'][task_idx] = model
 
-                        task_idx = 5
-                        assert d['tasks'][0]['arguments'][task_idx] == 1000, d['tasks'][0]['arguments'][task_idx]
-                        d['tasks'][0]['arguments'][task_idx] = train_size
+                            task_idx = 5
+                            assert d['tasks'][0]['arguments'][task_idx] == 1000, d['tasks'][0]['arguments'][task_idx]
+                            d['tasks'][0]['arguments'][task_idx] = train_size
 
-                        task_idx = 7
-                        assert d['tasks'][0]['arguments'][task_idx] == 5, d['tasks'][0]['arguments'][task_idx]
-                        d['tasks'][0]['arguments'][task_idx] = epoch
+                            task_idx = 7
+                            assert d['tasks'][0]['arguments'][task_idx] == 5, d['tasks'][0]['arguments'][task_idx]
+                            d['tasks'][0]['arguments'][task_idx] = epoch
 
-                        task_idx = 9
-                        assert d['tasks'][0]['arguments'][task_idx] == 0.001, d['tasks'][0]['arguments'][task_idx]
-                        d['tasks'][0]['arguments'][task_idx] = learning_rate
+                            task_idx = 9
+                            assert d['tasks'][0]['arguments'][task_idx] == 0.001, d['tasks'][0]['arguments'][task_idx]
+                            d['tasks'][0]['arguments'][task_idx] = learning_rate
 
-                        task_idx = 11
-                        assert d['tasks'][0]['arguments'][task_idx] == 1, d['tasks'][0]['arguments'][task_idx]
-                        d['tasks'][0]['arguments'][task_idx] = num
+                            task_idx = 11
+                            assert d['tasks'][0]['arguments'][task_idx] == 1, d['tasks'][0]['arguments'][task_idx]
+                            d['tasks'][0]['arguments'][task_idx] = num
 
-                        task_idx = 13
-                        assert d['tasks'][0]['arguments'][task_idx] == 'arc_easy', d['tasks'][0]['arguments'][task_idx]
-                        d['tasks'][0]['arguments'][task_idx] = dataset
+                            task_idx = 13
+                            assert d['tasks'][0]['arguments'][task_idx] == True, d['tasks'][0]['arguments'][task_idx]
+                            d['tasks'][0]['arguments'][task_idx] = nl
 
-                        fn = "yaml_files/{}.yaml".format(name)
-                        file = open(fn, "w")
-                        yaml.dump(d, file, default_flow_style=True)
-                        file.close()
+                            task_idx = 15
+                            assert d['tasks'][0]['arguments'][task_idx] == 'arc_easy', d['tasks'][0]['arguments'][task_idx]
+                            d['tasks'][0]['arguments'][task_idx] = dataset
 
-                        cmd = "beaker experiment create {} --workspace ai2/ensembles".format(fn)
-                        subprocess.Popen(cmd, shell=True)
-                        time.sleep(0.1)
+                            fn = "yaml_files/{}.yaml".format(name)
+                            file = open(fn, "w")
+                            yaml.dump(d, file, default_flow_style=True)
+                            file.close()
+
+                            cmd = "beaker experiment create {} --workspace ai2/ensembles".format(fn)
+                            subprocess.Popen(cmd, shell=True)
+                            time.sleep(0.5)
