@@ -2,7 +2,7 @@ version: v2-alpha
 description: prompting1
 tasks:
   - image:
-      beaker: 01G2VPAJ7ZB7D7866FG4YKES8X
+      beaker: 01G2X5C25E6XMKQ4M9KRVF8H19
     arguments: [
         python3,
         classification.py,
@@ -13,9 +13,9 @@ tasks:
         --num_models, 1,
         --non_linearity, True,
         --dataset, arc_easy,
+        --batch_size, 1,
         --dev_size, -1,
         --test_size, -1,
-        --batch_size, 1,
         --save_dir, /outputs
     ]
     envVars:
@@ -26,7 +26,7 @@ tasks:
     result:
       path: /outputs
     resources:
-      gpuCount: 2
+      gpuCount: 1
     context:
       cluster: ai2/mosaic-cirrascale
       priority: low

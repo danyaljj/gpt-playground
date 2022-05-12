@@ -6,12 +6,15 @@ import time
 with open("yaml_files/default_experiment.yaml", 'r') as f:
     default_yaml = f.read()
 
-cluster = "ai2/mosaic-cirrascale"
+# cluster = "ai2/mosaic-cirrascale"
 # cluster = "ai2/aristo-cirrascale"
 # cluster = "ai2/s2-cirrascale"
 # cluster = "ai2/karenq-a100-cluster_90"
 # cluster = "ai2/general-cirrascale"
-# cluster = "ai2/allennlp-cirrascale"
+cluster = "ai2/allennlp-cirrascale"
+# cluster = "ai2/danielk-a100-cluster-30-preemtible"
+# cluster = "ai2/danielk-a100-cluster-50"
+# cluster = "ai2/danielk-a100-cluster-10"
 
 multiberts = [ f'google/multiberts-seed_{idx}' for idx in range(0, 25) ]
 
@@ -49,14 +52,11 @@ models = [
 
 
 train_sizes = [
-    # 1000# , 10000, 39900
-    # 1119
     -1
 ]
 
 epochs = [
-    # 2, 3, 5, 7, #
-    9, 11, 13, 15
+    9, 11, 13
 ]
 
 learning_rates = [
@@ -65,23 +65,23 @@ learning_rates = [
 
 num_models = [
      # 1, 2, 3, 4, 5, 6, 7, 8, 9, 10
-    1, 2, 4, 8, 16, 25
-    # 1
+    # 1, 2, 4, 8, 16, 25
+    25
 ]
 
 non_linearity = [
-    True, False
-    # True
+    # True, False
+    True
 ]
 
 
 datasets = [
     # "copa",
-    "boolq",
-    "mrpc",
-    "hellaswag",
-    "swag",
-    'arc_easy',
+    # "boolq",
+    # "mrpc",
+    # "hellaswag",
+    # "swag",
+    # 'arc_easy',
     'arc_hard',
 ]
 
@@ -96,12 +96,24 @@ for dataset in datasets:
                 for epoch in epochs:
                     for learning_rate in learning_rates:
                         for nl in non_linearity:
+
                             d = copy.deepcopy(d1)
+
+                            if num <= 3:
+                                batch_size = 16
+                            elif num <= 6:
+                                batch_size = 8
+                            elif num <= 10:
+                                batch_size = 4
+                            elif num <= 15:
+                                batch_size = 2
+                            else:
+                                batch_size = 1
 
                             assert d['tasks'][0]['context']['cluster'] == "ai2/mosaic-cirrascale"
                             d['tasks'][0]['context']['cluster'] = cluster
 
-                            name = f"experiment_train_size={train_size}-model={model.replace('/', '_')}-lr={learning_rate}-epoch={epoch}-num_models={num}-dataset={dataset}-non_linearity={nl}"
+                            name = f"experiment_train_size={train_size}-model={model.replace('/', '_')}-lr={learning_rate}-epoch={epoch}-num_models={num}-dataset={dataset}-non_linearity={nl}-batch_size={batch_size}"
                             d['description'] = name
 
                             task_idx = 3
@@ -131,6 +143,10 @@ for dataset in datasets:
                             task_idx = 15
                             assert d['tasks'][0]['arguments'][task_idx] == 'arc_easy', d['tasks'][0]['arguments'][task_idx]
                             d['tasks'][0]['arguments'][task_idx] = dataset
+
+                            task_idx = 17
+                            assert d['tasks'][0]['arguments'][task_idx] == 1, d['tasks'][0]['arguments'][task_idx]
+                            d['tasks'][0]['arguments'][task_idx] = batch_size
 
                             fn = "yaml_files/{}.yaml".format(name)
                             file = open(fn, "w")

@@ -277,6 +277,7 @@ def main(
 
     training_args = TrainingArguments(
         output_dir=save_dir,
+        save_total_limit=1,
         evaluation_strategy="epoch",
         learning_rate=learning_rate,
         per_device_train_batch_size=batch_size,
