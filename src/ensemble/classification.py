@@ -1,6 +1,6 @@
 import argparse
 from transformers import AutoModelForMultipleChoice
-from datasets import load_dataset
+from datasets import load_dataset, load_metric
 import numpy as np
 from transformers import TrainingArguments, Trainer
 from transformers import AutoTokenizer, BertModel
@@ -9,9 +9,7 @@ from transformers.tokenization_utils_base import PreTrainedTokenizerBase, Paddin
 from typing import Optional, Union
 import torch
 from multiple_choice_ensemble import EnsembledBertForMultipleChoice, EnsembledBertConfig
-
-
-# import datasets
+from sklearn.metrics import accuracy_score, recall_score, precision_score, f1_score, precision_recall_fscore_support
 
 
 @dataclass
@@ -30,8 +28,6 @@ class DataCollatorForMultipleChoice:
             label_name = "label"
         elif "labels" in features[0].keys():
             label_name = "labels"
-        elif "answerKey" in features[0].keys():
-            label_name = "answerKey"
         else:
             raise ValueError("No label found in features: {}".format(features[0].keys()))
 
@@ -67,41 +63,12 @@ def main(
         save_dir=str,
         learning_rate=float,
         non_linearity=bool,
-        num_models=int
+        num_models=int,
+        dataset_name= str,
 ):
-    # dataset = load_dataset("glue", "mrpc")
-    # dataset = load_dataset("boolq")
-    # datasets = load_dataset("hellaswag", cache_dir="/data")
-    # datasets = load_dataset("hellaswag")
-    datasets = load_dataset("ai2_arc", "ARC-Easy")
-    # datasets = load_dataset("swag", "regular")
+
     tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=True)
 
-    # data_collator = DataCollatorWithPadding(tokenizer=tokenizer)
-
-    # def tokenize_function(examples):
-    #     return tokenizer(examples['content'], padding="max_length", truncation=True)
-    # def tokenize_function(examples):
-    #     contexts = examples["ctx"]
-    #     encoded_examples = []
-    #     for idx, e in enumerate(examples["endings"]):
-    #         candidates = " ".join([f" ({chr(ord('A') + i)}) {x}" for i, x in enumerate(e)])
-    #         encoded_examples.append(f"{contexts[idx]}\n{candidates}")
-    #     return tokenizer(encoded_examples, truncation=True, padding="max_length")
-
-    # tokenized_datasets = dataset.map(tokenize_function, batched=True)
-
-    def preprocess_function_arc_labels(examples):
-        # turn string labels into int labels
-        labels = []
-        for x in examples["answerKey"]:
-            if ord(x) >= ord('A') and ord(x) <= ord('Z'):
-                labels.append(ord(x) - ord('A'))
-            elif ord(x) >= ord('0') and ord(x) <= ord('9'):
-                labels.append(int(x))
-            else:
-                raise ValueError(f"Invalid label: {x}")
-        return {"labels": labels}
 
     def preprocess_function_arc(examples):
         # Repeat each first sentence four times to go with the four possibilities of second sentences.
@@ -125,7 +92,19 @@ def main(
         # Tokenize
         tokenized_examples = tokenizer(first_sentences, second_sentences, truncation=True)
         # Un-flatten
-        return {k: [v[i:i + 5] for i in range(0, len(v), 5)] for k, v in tokenized_examples.items()}
+        features = {k: [v[i:i + 5] for i in range(0, len(v), 5)] for k, v in tokenized_examples.items()}
+
+        labels = []
+        for x in examples["answerKey"]:
+            if ord(x) >= ord('A') and ord(x) <= ord('Z'):
+                labels.append(ord(x) - ord('A'))
+            elif ord(x) >= ord('0') and ord(x) <= ord('9'):
+                labels.append(int(x))
+            else:
+                raise ValueError(f"Invalid label: {x}")
+        features["labels"] = labels
+
+        return features
 
     ending_names = ["ending0", "ending1", "ending2", "ending3"]
 
@@ -163,26 +142,130 @@ def main(
         # Un-flatten
         return {k: [v[i:i + 4] for i in range(0, len(v), 4)] for k, v in tokenized_examples.items()}
 
-    # encoded_datasets = datasets.map(preprocess_function_hellaswag, batched=True)
+    def preprocess_function_boolq(examples):
+        # Repeat each first sentence four times to go with the four possibilities of second sentences.
+        first_sentences = []
+        second_sentences = []
+        for q, p in zip(examples["question"], examples["passage"]):
+            input = f"{q} - Passage: {p}"
+            first_sentences.append([input, input])
+            second_sentences.append([" (1) no ", " (2) yes "])
+
+        # Flatten everything
+        first_sentences = sum(first_sentences, [])
+        second_sentences = sum(second_sentences, [])
+
+        # Tokenize
+        tokenized_examples = tokenizer(first_sentences, second_sentences, truncation=True)
+        # Un-flatten
+        return {k: [v[i:i + 2] for i in range(0, len(v), 2)] for k, v in tokenized_examples.items()}
+
+    def preprocess_function_copa(examples):
+        # Repeat each first sentence four times to go with the four possibilities of second sentences.
+        first_sentences = []
+        second_sentences = []
+        for p, c1, c2 in zip(examples["premise"], examples["choice1"], examples["choice2"]):
+            question = f"{p} - Choice 1: {c1} - Choice 2: {c2}"
+            first_sentences.append([question, question])
+            second_sentences.append([" (1) choice 1 ", " (2) choice 2 "])
+
+        # Flatten everything
+        first_sentences = sum(first_sentences, [])
+        second_sentences = sum(second_sentences, [])
+
+        # Tokenize
+        tokenized_examples = tokenizer(first_sentences, second_sentences, truncation=True)
+        # Un-flatten
+        return {k: [v[i:i + 2] for i in range(0, len(v), 2)] for k, v in tokenized_examples.items()}
+
+    def preprocess_function_mrpc(examples):
+        # Repeat each first sentence four times to go with the four possibilities of second sentences.
+        first_sentences = []
+        second_sentences = []
+        for s1, s2 in zip(examples['sentence1'], examples['sentence2']):
+            input = f"Sent1: {s1} - Sent2: {s2}"
+            first_sentences.append([input, input])
+            second_sentences.append([" (1) Sent1 ", " (2) Sent2 "])
+
+        # Flatten everything
+        first_sentences = sum(first_sentences, [])
+        second_sentences = sum(second_sentences, [])
+
+        # Tokenize
+        tokenized_examples = tokenizer(first_sentences, second_sentences, truncation=True)
+        # Un-flatten
+        return {k: [v[i:i + 2] for i in range(0, len(v), 2)] for k, v in tokenized_examples.items()}
+
+    def compute_metrics_accuracy(eval_predictions):
+        predictions, label_ids = eval_predictions
+        preds = np.argmax(predictions, axis=1)
+        accuracy = (preds == label_ids).astype(np.float32).mean().item()
+        precision, recall, f_score, accuracy3 = precision_recall_fscore_support(y_true=label_ids, y_pred=preds, average='macro')
+
+        return {
+            "accuracy": accuracy,
+            "recall": recall,
+            "precision": precision,
+            "f1": f_score,
+        }
+
+    if dataset_name == "arc_easy":
+        datasets = load_dataset("ai2_arc", "ARC-Easy")
+        preprocess_function = preprocess_function_arc
+        compute_metrics = compute_metrics_accuracy
+    elif dataset_name == "arc_hard":
+        datasets = load_dataset("ai2_arc", "ARC-Challenge")
+        preprocess_function = preprocess_function_arc
+        compute_metrics = compute_metrics_accuracy
+    elif dataset_name == "swag":
+        datasets = load_dataset("swag", "regular")
+        preprocess_function = preprocess_function_swag
+        compute_metrics = compute_metrics_accuracy
+    elif dataset_name == "hellaswag":
+        datasets = load_dataset("hellaswag")
+        preprocess_function = preprocess_function_hellaswag
+        compute_metrics = compute_metrics_accuracy
+    elif dataset_name == "mrpc":
+        datasets = load_dataset("glue", "mrpc")
+        preprocess_function = preprocess_function_mrpc
+        compute_metrics = compute_metrics_accuracy
+    elif dataset_name == "boolq":
+        datasets = load_dataset("super_glue", "boolq")
+        preprocess_function = preprocess_function_boolq
+        compute_metrics = compute_metrics_accuracy
+    elif dataset_name == "copa":
+        datasets = load_dataset("super_glue", "copa")
+        preprocess_function = preprocess_function_copa
+        compute_metrics = compute_metrics_accuracy
+    elif dataset_name == "dream":
+        datasets = load_dataset("dream")
+        preprocess_function = None
+        compute_metrics = compute_metrics_accuracy
+        raise NotImplementedError
+    elif dataset_name == "record":
+        datasets = load_dataset("super_glue", "record")
+        preprocess_function = None
+        compute_metrics = load_metric("super_glue", "record")
+        raise NotImplementedError
+    else:
+        raise ValueError("Unknown dataset: {}".format(dataset_name))
+
     datasets.cleanup_cache_files()
 
-    encoded_datasets = datasets. \
-        map(preprocess_function_arc_labels, batched=True). \
-        map(preprocess_function_arc, batched=True)
+    encoded_datasets = datasets.map(preprocess_function, batched=True)
 
-    train_dataset = encoded_datasets["train"].shuffle(seed=42).select(range(train_size))
-    dev_dataset = encoded_datasets["validation"].shuffle(seed=42).select(range(dev_size))
-    test_dataset = encoded_datasets["test"].shuffle(seed=42).select(range(test_size))
+    train_dataset = encoded_datasets["train"].shuffle(seed=42)
+    if train_size > 0:
+        train_dataset = train_dataset.select(range(train_size))
 
-    # def show_one(example):
-    #     print(f"Context: {example['sent1']}")
-    #     print(f"  A - {example['sent2']} {example['ending0']}")
-    #     print(f"  B - {example['sent2']} {example['ending1']}")
-    #     print(f"  C - {example['sent2']} {example['ending2']}")
-    #     print(f"  D - {example['sent2']} {example['ending3']}")
-    #     print(f"\nGround truth: option {['A', 'B', 'C', 'D'][example['label']]}")
-    #
-    # show_one(train_dataset[0])
+    dev_dataset = encoded_datasets["validation"].shuffle(seed=42)
+    if dev_size > 0:
+        dev_dataset = dev_dataset.select(range(dev_size))
+
+    test_dataset = encoded_datasets["test"].shuffle(seed=42)
+    if test_size > 0:
+        test_dataset = test_dataset.select(range(test_size))
+
 
     # model = AutoModelForMultipleChoice.from_pretrained(model_name)
     # non_linearity = True
@@ -192,27 +275,6 @@ def main(
     model = EnsembledBertForMultipleChoice(config)
     model.initialize_with_existing_berts(model_names_list=None, num_models=num_models)
 
-    # model = EnsembledBertForMultipleChoice.from_pretrained("ensembed_bert_2")
-
-    # metric = load_metric("accuracy")
-    # metric = load_metric("glue", "mrpc")
-
-    # def compute_metrics(eval_pred):
-    #     logits, labels = eval_pred
-    #     predictions = np.argmax(logits, axis=-1)
-    #     return metric.compute(predictions=predictions, references=labels)
-
-    # def compute_metrics(eval_preds):
-    #     logits, labels = eval_preds
-    #     predictions = np.argmax(logits, axis=-1)
-    #     return metric.compute(predictions=predictions, references=labels)
-
-    def compute_metrics(eval_predictions):
-        predictions, label_ids = eval_predictions
-        preds = np.argmax(predictions, axis=1)
-        return {"accuracy": (preds == label_ids).astype(np.float32).mean().item()}
-
-    # training_args = TrainingArguments(output_dir="test_trainer")
     training_args = TrainingArguments(
         output_dir=save_dir,
         evaluation_strategy="epoch",
@@ -222,22 +284,11 @@ def main(
         num_train_epochs=epochs,
     )
 
-    # training_args = TrainingArguments(
-    #     output_dir="./results",
-    #     evaluation_strategy="epoch",
-    #     learning_rate=2e-5,
-    #     per_device_train_batch_size=16,
-    #     per_device_eval_batch_size=16,
-    #     num_train_epochs=3,
-    #     weight_decay=0.01,
-    # )
-
     trainer = Trainer(
         model=model,
         args=training_args,
         train_dataset=train_dataset,
         eval_dataset=dev_dataset,
-        # test_dataset=test_dataset,
         tokenizer=tokenizer,
         compute_metrics=compute_metrics,
         data_collator=DataCollatorForMultipleChoice(tokenizer)
@@ -259,12 +310,20 @@ def main(
     metrics['max_eval_accuracy'] = max([x['eval_accuracy'] for x in metrics['log_history'] if 'eval_accuracy' in x])
     metrics['min_eval_loss'] = min([x['eval_loss'] for x in metrics['log_history'] if 'eval_loss' in x])
 
-    m1 = trainer.evaluate(test_dataset, metric_key_prefix="final_test")
     m2 = trainer.evaluate(dev_dataset, metric_key_prefix="final_dev")
+
+    if dataset_name in ['copa']:
+        m1 = m2 # don't evaluate on the test set
+    else:
+        m1 = trainer.evaluate(test_dataset, metric_key_prefix="final_test")
+
     for k, v in m1.items():
         metrics[k] = v
     for k, v in m2.items():
         metrics[k] = v
+
+    print("saving the metrics")
+    print(json.dumps(metrics, indent=4, sort_keys=True))
 
     out = open(save_dir + '/metrics.json', 'w')
     json.dump(metrics, out)
@@ -284,6 +343,7 @@ if __name__ == "__main__":
     parser.add_argument("--learning_rate")
     parser.add_argument("--non_linearity")
     parser.add_argument("--num_models")
+    parser.add_argument("--dataset")
     args = parser.parse_args()
 
     assert args.non_linearity in ['True', 'true', 'False',
@@ -301,4 +361,5 @@ if __name__ == "__main__":
         learning_rate=float(args.learning_rate),
         non_linearity=args.non_linearity,
         num_models=int(args.num_models),
+        dataset_name=args.dataset
     )
