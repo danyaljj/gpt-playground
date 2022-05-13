@@ -64,11 +64,11 @@ class EnsembledBertForMultipleChoice(PreTrainedModel):
     def __init__(self, config):
         super().__init__(config)
 
-        visible_devices = os.getenv('CUDA_VISIBLE_DEVICES').split(',')
+        visible_devices = [f'cuda:{idx}' for idx in range(torch.cuda.device_count())]
         self.devices = []
         for i in range(self.config.num_models):
-            self.devices.append('cuda:' + visible_devices[i % len(visible_devices)].strip())
-        print("visible_devices", visible_devices)
+            self.devices.append(visible_devices[i % len(visible_devices)])
+
         print(f"Using devices: {self.devices}")
         self.bert_models = torch.nn.ModuleList(
             [BertModel(config).to(self.devices[i]) for i in range(self.config.num_models)]

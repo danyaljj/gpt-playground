@@ -8,8 +8,8 @@ from dataclasses import dataclass
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase, PaddingStrategy
 from typing import Optional, Union
 import torch
-# from multiple_choice_ensemble import EnsembledBertForMultipleChoice, EnsembledBertConfig
-from multiple_choice_ensemble_with_parallelization import EnsembledBertForMultipleChoice, EnsembledBertConfig
+from multiple_choice_ensemble import EnsembledBertForMultipleChoice, EnsembledBertConfig
+# from multiple_choice_ensemble_with_parallelization import EnsembledBertForMultipleChoice, EnsembledBertConfig
 from sklearn.metrics import precision_recall_fscore_support
 
 
