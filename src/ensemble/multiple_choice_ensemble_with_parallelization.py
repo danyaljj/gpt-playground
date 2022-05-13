@@ -111,8 +111,10 @@ class EnsembledBertForMultipleChoice(PreTrainedModel):
         for idx, model_name in enumerate(model_names):
             model1 = BertModel.from_pretrained(model_name)
             self.bert_models[idx].load_state_dict(model1.state_dict())
-            # for param in self.bert_models[idx].parameters():
-            #    param.requires_grad = False
+
+            # TODO: make this a parameter for our ablation study
+            for param in self.bert_models[idx].parameters():
+               param.requires_grad = False
             self.bert_models[idx] = self.bert_models[idx].to(self.devices[idx])
         print('require_grad', all(param.requires_grad for model in self.bert_models for param in model.parameters()))
 

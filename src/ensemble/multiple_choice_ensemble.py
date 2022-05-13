@@ -60,6 +60,10 @@ class EnsembledBertForMultipleChoice(PreTrainedModel):
             model1 = BertModel.from_pretrained(model_name)
             self.bert_models[idx].load_state_dict(model1.state_dict())
 
+            # TODO: make this a parameter for our evaluations
+            for p in self.bert_models[idx].parameters():
+                p.requires_grad = False
+
     def forward(
             self,
             input_ids: Optional[torch.Tensor] = None,

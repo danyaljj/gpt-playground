@@ -268,8 +268,6 @@ def main(
 
 
     # model = AutoModelForMultipleChoice.from_pretrained(model_name)
-    # non_linearity = True
-    # num_models = 2
     bert_config = BertModel.from_pretrained("google/multiberts-seed_0").config
     config = EnsembledBertConfig(num_models=num_models, non_linearity=non_linearity, **bert_config.to_dict())
     model = EnsembledBertForMultipleChoice(config)
