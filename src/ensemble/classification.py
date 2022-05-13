@@ -8,8 +8,9 @@ from dataclasses import dataclass
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase, PaddingStrategy
 from typing import Optional, Union
 import torch
-from multiple_choice_ensemble import EnsembledBertForMultipleChoice, EnsembledBertConfig
-from sklearn.metrics import accuracy_score, recall_score, precision_score, f1_score, precision_recall_fscore_support
+# from multiple_choice_ensemble import EnsembledBertForMultipleChoice, EnsembledBertConfig
+from multiple_choice_ensemble_with_parallelization import EnsembledBertForMultipleChoice, EnsembledBertConfig
+from sklearn.metrics import precision_recall_fscore_support
 
 
 @dataclass
@@ -67,8 +68,7 @@ def main(
         dataset_name= str,
 ):
 
-    tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=True)
-
+    tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=False)
 
     def preprocess_function_arc(examples):
         # Repeat each first sentence four times to go with the four possibilities of second sentences.
@@ -350,6 +350,12 @@ if __name__ == "__main__":
     assert args.non_linearity in ['True', 'true', 'False',
                                   'false'], f"{args.non_linearity} - {type(args.non_linearity)}"
     args.non_linearity = args.non_linearity in ['True', 'true']
+
+    torch.multiprocessing.set_start_method('spawn')
+
+    print('torch.cuda.device_count()', torch.cuda.device_count())
+    for i in range(torch.cuda.device_count()):
+        print('torch.cuda.get_device_name(i)', torch.cuda.get_device_name(i))
 
     main(
         args.model,

@@ -6,12 +6,12 @@ import time
 with open("yaml_files/default_experiment.yaml", 'r') as f:
     default_yaml = f.read()
 
-# cluster = "ai2/mosaic-cirrascale"
+cluster = "ai2/mosaic-cirrascale"
 # cluster = "ai2/aristo-cirrascale"
 # cluster = "ai2/s2-cirrascale"
 # cluster = "ai2/karenq-a100-cluster_90"
 # cluster = "ai2/general-cirrascale"
-cluster = "ai2/allennlp-cirrascale"
+# cluster = "ai2/allennlp-cirrascale"
 # cluster = "ai2/danielk-a100-cluster-30-preemtible"
 # cluster = "ai2/danielk-a100-cluster-50"
 # cluster = "ai2/danielk-a100-cluster-10"
@@ -56,17 +56,18 @@ train_sizes = [
 ]
 
 epochs = [
-    9, 11, 13
+    # 9, 11, 13
+    11
 ]
 
 learning_rates = [
-    2e-5, 1e-5, 4e-5 # 5e-5, 3e-5,
+    2e-5# , 1e-5, 4e-5 # 5e-5, 3e-5,
 ]
 
 num_models = [
      # 1, 2, 3, 4, 5, 6, 7, 8, 9, 10
     # 1, 2, 4, 8, 16, 25
-    25
+    4, 8
 ]
 
 non_linearity = [
@@ -81,8 +82,8 @@ datasets = [
     # "mrpc",
     # "hellaswag",
     # "swag",
-    # 'arc_easy',
-    'arc_hard',
+    'arc_easy',
+    # 'arc_hard',
 ]
 
 
@@ -99,16 +100,17 @@ for dataset in datasets:
 
                             d = copy.deepcopy(d1)
 
-                            if num <= 3:
-                                batch_size = 16
-                            elif num <= 6:
-                                batch_size = 8
-                            elif num <= 10:
-                                batch_size = 4
-                            elif num <= 15:
-                                batch_size = 2
-                            else:
-                                batch_size = 1
+                            batch_size = 8
+                            # if num <= 3:
+                            #     batch_size = 16
+                            # elif num <= 6:
+                            #     batch_size = 8
+                            # elif num <= 10:
+                            #     batch_size = 4
+                            # elif num <= 15:
+                            #     batch_size = 2
+                            # else:
+                            #     batch_size = 1
 
                             assert d['tasks'][0]['context']['cluster'] == "ai2/mosaic-cirrascale"
                             d['tasks'][0]['context']['cluster'] = cluster

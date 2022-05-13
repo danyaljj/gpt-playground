@@ -20,3 +20,4 @@ RUN pip3 install -r requirements.txt
 
 COPY classification.py .
 COPY multiple_choice_ensemble.py .
+COPY multiple_choice_ensemble_with_parallelization.py .

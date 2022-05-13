@@ -2,7 +2,7 @@ version: v2-alpha
 description: prompting1
 tasks:
   - image:
-      beaker: 01G2X5C25E6XMKQ4M9KRVF8H19
+      beaker: 01G2XGYKF193H65GNND6ER0NX0
     arguments: [
         python3,
         classification.py,
@@ -20,13 +20,13 @@ tasks:
     ]
     envVars:
       - name: CUDA_VISIBLE_DEVICES
-        value: "0"
+        value: "0,1"
       - name: WANDB_DISABLED
         value: "true"
     result:
       path: /outputs
     resources:
-      gpuCount: 1
+      gpuCount: 2
     context:
       cluster: ai2/mosaic-cirrascale
       priority: low
