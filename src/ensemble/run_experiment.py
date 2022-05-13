@@ -56,33 +56,32 @@ train_sizes = [
 ]
 
 epochs = [
-    # 9, 11, 13
-    11
+    9, 11, 13
 ]
 
 learning_rates = [
-    2e-5# , 1e-5, 4e-5 # 5e-5, 3e-5,
+    2e-5 , 1e-5, 4e-5 # 5e-5, 3e-5,
 ]
 
 num_models = [
      # 1, 2, 3, 4, 5, 6, 7, 8, 9, 10
-    # 1, 2, 4, 8, 16, 25
-    4, 8
+    1, 2, 4, 8, 16, 25
+    # 4, 8
 ]
 
 non_linearity = [
-    # True, False
-    True
+    True, False
+    # False
 ]
 
 
 datasets = [
     # "copa",
     # "boolq",
-    # "mrpc",
+    "mrpc",
     # "hellaswag",
     # "swag",
-    'arc_easy',
+    # 'arc_easy',
     # 'arc_hard',
 ]
 
@@ -100,7 +99,7 @@ for dataset in datasets:
 
                             d = copy.deepcopy(d1)
 
-                            batch_size = 8
+                            batch_size = 2
                             # if num <= 3:
                             #     batch_size = 16
                             # elif num <= 6:
