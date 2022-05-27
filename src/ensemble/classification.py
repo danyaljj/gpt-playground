@@ -221,6 +221,14 @@ def main(
         datasets = load_dataset("swag", "regular")
         preprocess_function = preprocess_function_swag
         compute_metrics = compute_metrics_accuracy
+    elif dataset_name == "qasc":
+        datasets = load_dataset("qasc")
+        preprocess_function = preprocess_function_arc
+        compute_metrics = compute_metrics_accuracy
+    elif dataset_name == "openbookqa":
+        datasets = load_dataset("openbookqa")
+        preprocess_function = preprocess_function_arc
+        compute_metrics = compute_metrics_accuracy
     elif dataset_name == "hellaswag":
         datasets = load_dataset("hellaswag")
         preprocess_function = preprocess_function_hellaswag

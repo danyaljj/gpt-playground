@@ -78,11 +78,13 @@ non_linearity = [
 datasets = [
     # "copa",
     # "boolq",
-    "mrpc",
+    # "mrpc",
     # "hellaswag",
     # "swag",
     # 'arc_easy',
     # 'arc_hard',
+    "qasc",
+    "openbookqa",
 ]
 
 
