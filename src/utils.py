@@ -8,6 +8,7 @@ from transformers.modeling_outputs import CausalLMOutputWithCrossAttentions
 
 eps = 1e-10
 
+
 def decode_with_embedding(model, length, temperature, device, prompt_embedding):
     '''
     GPT2 decoding via dense representations (no arg-max)
@@ -50,6 +51,7 @@ def decode_with_one_hot(model, length, input_one_hot1, temperature, device):
         inputs_embeds1 = embed_inputs(model.get_input_embeddings(), logits, device=device)
     return logits_so_far
 
+
 def decode_with_argmax(model, length, input_ids1, device):
     '''
     GPT2 decoding via dense representations (no arg-max)
@@ -70,7 +72,15 @@ def decode_with_argmax(model, length, input_ids1, device):
         # inputs_embeds = embed_inputs(model.get_input_embeddings(), logits, device=device)
         next_token = torch.argmax(logits)
         input_ids1 = torch.cat([input_ids1, next_token.unsqueeze(0).unsqueeze(0)], 1)
-    return logits_so_far
+    return logits_so_far,
+
+
+# given a sentence return an embedded version of it
+def embed_sentence(model, input_ids, device):
+    logits = decode_with_argmax(model, input_ids.shape[1], input_ids, device=device)
+    # use the logits of the last word
+    logits = logits[0][0][-1]
+    return embed_inputs(model.get_input_embeddings(), logits, device=device)
 
 
 def embed_inputs(embedding, logits, device, print_entropy=False):
@@ -139,11 +149,14 @@ def svd_model_embeddings(model):
 
     return u, s, vh
 
+
 def project_ids(input_ids, model, tokenizer, device):
     desired_beginning_ids = tokenizer.encode(input_ids, return_tensors="pt").to(device)
     desired_beginning_one_hot = one_hot(desired_beginning_ids, dimension=tokenizer.vocab_size)
-    embeddings = torch.matmul(desired_beginning_one_hot.type(torch.FloatTensor).to(device), model.get_input_embeddings().weight.to(device))
+    embeddings = torch.matmul(desired_beginning_one_hot.type(torch.FloatTensor).to(device),
+                              model.get_input_embeddings().weight.to(device))
     return embeddings
+
 
 def project_embeddings(embedding, model, temp, with_streight_through=False):
     logits = torch.matmul(embedding, torch.transpose(model.get_input_embeddings().weight, 0, 1))
@@ -228,6 +241,5 @@ def new_forward(
         attentions=transformer_outputs.attentions,
         cross_attentions=transformer_outputs.cross_attentions,
     )
-    output.hidden_states=hidden_states # new addition
+    output.hidden_states = hidden_states  # new addition
     return output
-

@@ -14,7 +14,7 @@ from transformers import EvalPrediction, AutoTokenizer, TrainingArguments, AutoM
 
 discrimination_data_path = 'grover-models/discrimination-data'
 output_dir = 'generated-datasets'
-data_dir = '/gscratch/xlab/msclar/'
+data_dir = '/net/nfs2.mosaic/danielk/pycharm_project_419'
 
 if not torch.cuda.is_available():
     data_dir = './'
@@ -28,9 +28,10 @@ body_max_size = 200
 MODELS_TO_EXECUTE = [
     "arwen-gpt2-medium-x21",
     "beren-gpt2-medium-x49",
-    # "celebrimbor-gpt2-medium-x81",
+    "celebrimbor-gpt2-medium-x81",
     "durin-gpt2-medium-x343"
 ]
+
 
 def combining_models(models, input_ids, target_ids):
     logits = []
@@ -42,6 +43,8 @@ def combining_models(models, input_ids, target_ids):
 
 # https://github.com/huggingface/transformers/blob/56f50590d5a9ac881db9ee1753f4642cf3d33d28/src/transformers/models/gpt2/modeling_gpt2.py
 loss_fct = torch.nn.CrossEntropyLoss()
+
+
 def compute_cross_entropy_loss(lm_logits, labels):
     loss = None
     if labels is not None:
@@ -83,9 +86,17 @@ def huggingface_perplexity_fn(models_dict, model, encodings, device, combine_sev
     return ppl
 
 
-def perplexity_experiment(args):
-    args.average_logits = True  # the version that generated more reasonable text
-    args.average_probs = False
+def perplexity_experiment():
+    # args.average_logits = True  # the version that generated more reasonable text
+    # args.average_probs = False
+
+    dataset = load_dataset(
+        "json",
+        # data_files=os.path.join(data_dir, discrimination_data_path, 'base', f'p=0.96.jsonl'),
+        data_files=f'/net/nfs2.mosaic/danielk/pycharm_project_419/src/ensemble/random_text_documents.json',
+        field="data",
+        cache_dir=cache_dir
+    )['train']
 
     tokenizer = AutoTokenizer.from_pretrained('gpt2')
     tokenizer.pad_token = tokenizer.eos_token
@@ -97,58 +108,49 @@ def perplexity_experiment(args):
             "stanford-crfm/" + model_name, return_dict_in_generate=True,
             pad_token_id=tokenizer.eos_token_id, cache_dir=cache_dir)
         models[model_name].to(device)
-
-    dataset = load_dataset(
-        "json",
-        data_files=os.path.join(data_dir, args.input_document),
-        field="data",
-        cache_dir=cache_dir
-    )['train']
+        print(f" >>>>> loaded model: {model_name}")
 
     # MSCLAR: edits to be FAST
     dataset = dataset.filter(lambda x: x['split'] != 'test')
-    dataset = dataset.filter(lambda e, i: i < len(dataset) // 2, with_indices=True)
+    dataset = dataset.shuffle(seed=42)
+    # dataset = dataset.filter(lambda e, i: i < len(dataset) // 40, with_indices=True)
     dataset = dataset.filter(lambda x: x['label'] == 'human')  # to have source articles to measure :)
     print(dataset)
 
-    encodings = tokenizer("\n\n".join(dataset["article"]), return_tensors="pt")
+    """
+    # Concatenate documents to compute only one perplexity!
 
-    metrics = {}
+    encodings = tokenizer("\n\n".join(dataset["article"]), return_tensors="pt")
     for model_name in MODELS_TO_EXECUTE:
         ppl = huggingface_perplexity_fn(None, models[model_name], encodings, device, combine_several_models=False)
         print('IndivPerplexity', model_name, ':', ppl.item())
-        metrics[f'{model_name}_ppl'] = ppl.item()
-
     ppl = huggingface_perplexity_fn(models, None, encodings, device, combine_several_models=True)
     print('CombinedPerplexity:', ppl.item())
-    metrics[f'combined_ppl'] = ppl.item()
-
     """
-    # FIXME average perplexity per article to not OOM
-    encodings = tokenizer("\n\n".join(dataset["article"]), return_tensors="pt")
+    from tqdm import tqdm
+
+    # Document level Perplexity
     for model_name in MODELS_TO_EXECUTE:
-        ppl = 0
-        total = 0
-        for row in dataset["article"]:
-            encodings = tokenizer(row, return_tensors="pt")
-            ppl += huggingface_perplexity_fn(None, models[model_name], encodings, device, combine_several_models=False).item()
-            total += 1
-        print('IndivPerplexity', model_name, ':', ppl / total)
-    ppl = huggingface_perplexity_fn(models, None, encodings, device, combine_several_models=True)
-    print('CombinedPerplexity:', ppl.item())
-    """
+        ppl = []
+        for text in tqdm(dataset["article"]):
+            encodings = tokenizer(text, return_tensors="pt")
+            ppl.append(huggingface_perplexity_fn(None, models[model_name], encodings, device,
+                                                 combine_several_models=False).item())
+        print('IndivPerplexity', model_name, ':', sum(ppl) / len(ppl), ppl)
 
-    out = open('metrics.json', 'w')
-    print(json.dumps(metrics, indent=4, sort_keys=True))
-    json.dump(metrics, out)
-    out.close()
+    ppl = []
+    for text in dataset["article"]:
+        encodings = tokenizer(text, return_tensors="pt")
+        ppl.append(huggingface_perplexity_fn(models, None, encodings, device, combine_several_models=True).item())
+    print('CombinedPerplexity:', sum(ppl) / len(ppl), ppl)
 
 
 def create_dataset_averaging_logits(args):
     assert args.top_p
 
     tokenizer = AutoTokenizer.from_pretrained(args.model_type)
-    if args.model_type.startswith('gpt2') or args.model_type.startswith('EleutherAI') or args.model_type.startswith('stanford-crfm'):
+    if args.model_type.startswith('gpt2') or args.model_type.startswith('EleutherAI') or args.model_type.startswith(
+            'stanford-crfm'):
         tokenizer.pad_token = tokenizer.eos_token
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -186,10 +188,8 @@ def create_dataset_averaging_logits(args):
             output = {}
             next_token_logits = []
             for model_name in models:
-                output[model_name] = models[model_name](input_ids=input_ids) #, attention_mask=attention_mask)
+                output[model_name] = models[model_name](input_ids=input_ids)  # , attention_mask=attention_mask)
                 next_token_logits.append(output[model_name].logits[:, -1, :])
-
-            assert args.average_logits and args.average_probs == False, f"These two options average_logits={args.average_logits} and average_probs={args.average_probs} can't be true at the same time! "
 
             if args.average_logits:
                 next_token_scores = sum(next_token_logits)
@@ -197,7 +197,7 @@ def create_dataset_averaging_logits(args):
                 # compute proba distribution for all, then sum
                 next_token_scores = sum(logits.softmax(dim=-1) for logits in next_token_logits)
             else:
-                raise Exception("unknown setting . . . ")
+                0 / 0
 
             # pre-process distribution
             # next_token_scores = logits_processor(input_ids, next_token_logits)
@@ -229,9 +229,8 @@ if __name__ == "__main__":
     parser.add_argument('--sample_size', type=int, default=-1)
     parser.add_argument('--average_logits', action='store_true')
     parser.add_argument('--average_probs', action='store_true')
-    # parser.add_argument('--combine_several_models', action='store_true')
-    parser.add_argument('--input_document', type=str)
+    parser.add_argument('--combine_several_models', action='store_true')
 
     args = parser.parse_args()
     # create_dataset_averaging_logits(args)
-    perplexity_experiment(args)
+    perplexity_experiment()

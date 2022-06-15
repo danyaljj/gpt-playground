@@ -60,13 +60,14 @@ epochs = [
 ]
 
 learning_rates = [
-    2e-5 , 1e-5, 4e-5 # 5e-5, 3e-5,
+    2e-5, 1e-5, 4e-5 # 5e-5, 3e-5,
 ]
 
 num_models = [
      # 1, 2, 3, 4, 5, 6, 7, 8, 9, 10
-    1, 2, 4, 8, 16, 25
+    1, 2, 4, 8, 16
     # 4, 8
+    # 1
 ]
 
 non_linearity = [
@@ -74,6 +75,7 @@ non_linearity = [
     # False
 ]
 
+identical_models = True # for debugging purposes
 
 datasets = [
     # "copa",
@@ -81,10 +83,10 @@ datasets = [
     # "mrpc",
     # "hellaswag",
     # "swag",
-    # 'arc_easy',
+    'arc_easy',
     # 'arc_hard',
-    "qasc",
-    "openbookqa",
+    # "qasc",
+    # "openbookqa",
 ]
 
 
@@ -116,7 +118,7 @@ for dataset in datasets:
                             assert d['tasks'][0]['context']['cluster'] == "ai2/mosaic-cirrascale"
                             d['tasks'][0]['context']['cluster'] = cluster
 
-                            name = f"experiment_train_size={train_size}-model={model.replace('/', '_')}-lr={learning_rate}-epoch={epoch}-num_models={num}-dataset={dataset}-non_linearity={nl}-batch_size={batch_size}"
+                            name = f"experiment_train_size={train_size}-model={model.replace('/', '_')}-lr={learning_rate}-epoch={epoch}-num_models={num}-identical_models={identical_models}-dataset={dataset}-non_linearity={nl}-batch_size={batch_size}"
                             d['description'] = name
 
                             task_idx = 3
@@ -150,6 +152,10 @@ for dataset in datasets:
                             task_idx = 17
                             assert d['tasks'][0]['arguments'][task_idx] == 1, d['tasks'][0]['arguments'][task_idx]
                             d['tasks'][0]['arguments'][task_idx] = batch_size
+
+                            task_idx = 19
+                            assert d['tasks'][0]['arguments'][task_idx] == False, d['tasks'][0]['arguments'][task_idx]
+                            d['tasks'][0]['arguments'][task_idx] = identical_models
 
                             fn = "yaml_files/{}.yaml".format(name)
                             file = open(fn, "w")

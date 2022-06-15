@@ -2,7 +2,7 @@ version: v2-alpha
 description: prompting1
 tasks:
   - image:
-      beaker: 01G2ZTQ075XXDN4DZQH1VN742D
+      beaker: 01G431T40C8NFD3VPRJY0PSD2A
     arguments: [
         python3,
         classification.py,
@@ -14,6 +14,7 @@ tasks:
         --non_linearity, True,
         --dataset, arc_easy,
         --batch_size, 1,
+        --identical_models, False,
         --dev_size, -1,
         --test_size, -1,
         --save_dir, /outputs

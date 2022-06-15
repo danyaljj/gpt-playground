@@ -1,4 +1,5 @@
 import argparse
+from functools import partial
 from transformers import AutoModelForMultipleChoice
 from datasets import load_dataset, load_metric
 import numpy as np
@@ -66,13 +67,14 @@ def main(
         non_linearity=bool,
         num_models=int,
         dataset_name= str,
+        identical_models=bool
 ):
 
     tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=False)
 
-    def preprocess_function_arc(examples):
+    def preprocess_function_arc(examples, q_key="question", max_candidates=5):
         # Repeat each first sentence four times to go with the four possibilities of second sentences.
-        first_sentences = [[context] * 5 for context in examples["question"]]
+        first_sentences = [[context] * 5 for context in examples[q_key]]
         # Grab all second sentences possible for each context.
 
         second_sentences = []
@@ -82,7 +84,7 @@ def main(
                 candidates.append("(D) - ")
             if len(candidates) == 4:
                 candidates.append("(E) - ")
-            assert len(candidates) == 5, f"{candidates}"
+            assert len(candidates) == max_candidates, f"{candidates}"
             second_sentences.append(candidates)
 
         # Flatten everything
@@ -227,7 +229,7 @@ def main(
         compute_metrics = compute_metrics_accuracy
     elif dataset_name == "openbookqa":
         datasets = load_dataset("openbookqa")
-        preprocess_function = preprocess_function_arc
+        preprocess_function = partial(preprocess_function_arc,q_key="question_stem")
         compute_metrics = compute_metrics_accuracy
     elif dataset_name == "hellaswag":
         datasets = load_dataset("hellaswag")
@@ -279,7 +281,7 @@ def main(
     bert_config = BertModel.from_pretrained("google/multiberts-seed_0").config
     config = EnsembledBertConfig(num_models=num_models, non_linearity=non_linearity, **bert_config.to_dict())
     model = EnsembledBertForMultipleChoice(config)
-    model.initialize_with_existing_berts(model_names_list=None, num_models=num_models)
+    model.initialize_with_existing_berts(model_names_list=None, num_models=num_models, identical_models=identical_models)
 
     training_args = TrainingArguments(
         output_dir=save_dir,
@@ -350,12 +352,15 @@ if __name__ == "__main__":
     parser.add_argument("--learning_rate")
     parser.add_argument("--non_linearity")
     parser.add_argument("--num_models")
+    parser.add_argument("--identical_models")
     parser.add_argument("--dataset")
     args = parser.parse_args()
 
-    assert args.non_linearity in ['True', 'true', 'False',
-                                  'false'], f"{args.non_linearity} - {type(args.non_linearity)}"
-    args.non_linearity = args.non_linearity in ['True', 'true']
+    assert args.non_linearity in ['true', 'false'], f"{args.non_linearity} - {type(args.non_linearity)}"
+    args.non_linearity = args.non_linearity in ['true']
+
+    assert args.identical_models in ['true', 'false'], f"{args.identical_models} - {type(args.identical_models)}"
+    args.identical_models = args.identical_models in ['true']
 
     torch.multiprocessing.set_start_method('spawn')
 
@@ -374,5 +379,6 @@ if __name__ == "__main__":
         learning_rate=float(args.learning_rate),
         non_linearity=args.non_linearity,
         num_models=int(args.num_models),
-        dataset_name=args.dataset
+        dataset_name=args.dataset,
+        identical_models=args.identical_models
     )

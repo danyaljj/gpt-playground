@@ -47,12 +47,18 @@ class EnsembledBertForMultipleChoice(PreTrainedModel):
         else:
             self.cls = torch.nn.Linear(len(self.bert_models) * self.config.hidden_size, 1)
 
-    def initialize_with_existing_berts(self, model_names_list, num_models):
+    def initialize_with_existing_berts(self, model_names_list, num_models, identical_models=False):
         print(" >>>>>>>> initialize >>>>>>>>> ")
         if model_names_list:
             model_names = [model_name for model_name in model_names_list.split(',')]
         else:
-            model_names = [f"google/multiberts-seed_{i}" for i in range(num_models)]
+            if identical_models:
+                # for analyses purposes
+                model_names = [f"google/multiberts-seed_0" for i in range(num_models)]
+            else:
+                model_names = [f"google/multiberts-seed_{i}" for i in range(num_models)]
+
+        print(f">>>> loading the following models: {model_names} ")
 
         assert self.config.num_models == len(model_names), "Number of BERT models must match"
 
