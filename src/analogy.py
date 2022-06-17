@@ -1,6 +1,8 @@
+import copy
+
 from transformers import GPT2LMHeadModel, GPT2Tokenizer, GPTJForCausalLM, AutoTokenizer
 import torch
-from utils import embed_sentence
+from utils import embed_sentence, perplexity_fn
 from tqdm import tqdm
 from numpy.linalg import norm
 import numpy as np
@@ -14,13 +16,13 @@ if False:
     model = GPTJForCausalLM.from_pretrained(model_name, low_cpu_mem_usage=True, cache_dir=cache_dir)
 #     , revision="float16", torch_dtype=torch.float16
 else:
-    model_name = 'gpt2-xl'
-    # model_name = 'distilgpt2'
+    # model_name = 'gpt2-xl'
+    model_name = 'distilgpt2'
     tokenizer = GPT2Tokenizer.from_pretrained(model_name, cache_dir=cache_dir)
-    model = GPT2LMHeadModel.from_pretrained(model_name, output_hidden_states=True,cache_dir=cache_dir)
-
+    model = GPT2LMHeadModel.from_pretrained(model_name, output_hidden_states=True, cache_dir=cache_dir)
 
 model.to('cuda')
+
 
 def extract_heatmap(fillers1, fillers2, s1_template, s2_template, label1, label2):
     import numpy as np
@@ -131,28 +133,33 @@ elif False:
 
     extract_heatmap(fillers1, fillers2, s1_template, s2_template, label1, label2)
 
-elif True:
+elif False:
     sentences = [[x, "red"] for x in
-                 ["Cats that used to be kittens", "Men who used to be boys", "Women who used to be girls",
-                  "People who used to be kids"]] + [
+                 [
+                     "Cats that used to be kittens",
+                     "Men who used to be boys",
+                     "Women who used to be girls",
+                     "People who used to be kids"
+                 ]] + [
                     [x, "green"] for x in [
-            "Cats that try hard to catch a mice",
             "Men who work hard",
             "Women who work hard",
             "People who work hard",
-        ]] + [[x, "yellow"] for x in
-              ["Men who get addicted",
-               "Women who get addicted",
-               "Addict men",
-               "Addict women",
-               "Addicts",
-               "People who get addicted"]
+        ]] + [[x, "yellow"] for x in [
+        "Men who are known to be addicted.",
+        "Women who are known to be addicted.",
+        "Men who are known to be addicts.",
+        "Women who are known to be addicts.",
+        "Those who are known to be addicts.",
+        "People who are known to be addicts.",
+    ]
               ] + [[x, "blue"] for x in [
-        "Men who are antisocial",
-        "Women who are antisocial",
-        "Antisocial people",
-        "Antisocial individuals",
-        "People who are antisocial", ]] + [[x, "cyan"] for x in [
+        "Men who are known to be antisocial.",
+        "Women who are known to be antisocial.",
+        "People who are known to be antisocial.",
+        "Individuals who are known to be antisocial.",
+        "Those who are known to be antisocial",
+    ]] + [[x, "cyan"] for x in [
         "Dogs are known to bark.",
         "Cats are known to meow.",
         "Cats are known to purr.",
@@ -499,5 +506,50 @@ elif True:
         # "Beihai park on a Sunday on a blue-sky spring day is teeming with smiling people."
     ]]
 
-for size in [26, 40, 70, 100, 200, 300]:
-    plot_tsne(model, sentences[:size])
+    for size in [26, 40, 70, 100, 200, 300]:
+        plot_tsne(model, sentences[:size])
+elif False:
+    # load the prosocial dataset
+    import json
+    safety_annotation_counts = {}
+    with open("../data/prosocial_dialog_v1/train.json", "r") as f:
+        data = json.load(f)
+        for x in data:
+            for xx in x:
+                for sa in xx["rots"]:
+                    if sa not in safety_annotation_counts:
+                        safety_annotation_counts[sa] = 0
+                    safety_annotation_counts[sa] += 1
+
+
+
+        # show the most frequent safety annotations
+        safety_annotations = sorted(safety_annotation_counts.items(), key=lambda x: x[1], reverse=True)
+        for x in safety_annotations[:100]:
+            print(str(x[1]) + "\t" + str(x[0]))
+elif True:
+    # TODO: compare the perplexity of the two sentences
+
+    s1 = "Cats are known to meow."
+    s2 =  "Dogs are known to bark."
+    s1_ids = tokenizer.encode(s1, return_tensors="pt").to(device)
+    s2_ids = tokenizer.encode(s2, return_tensors="pt").to(device)
+
+    print(" >>>> original sentences")
+    s1ppl = perplexity_fn(model, s1_ids, tokenizer, device)
+    s2ppl = perplexity_fn(model, s2_ids, tokenizer, device)
+    print(s1 + "\t" + str(s1ppl))
+    print(s2 + "\t" + str(s2ppl))
+
+    print(" >>>> s1 replaced in s2")
+    s1_tokens = s1.split(" ")
+    s2_tokens = s2.split(" ")
+    for t1 in s1_tokens:
+        for idx, _ in enumerate(s2_tokens):
+            s2_tokens_copy = copy.deepcopy(s2_tokens)
+            s2_tokens_copy[idx] = t1
+            new_s2 = " ".join(s2_tokens_copy)
+            new_s2_ids = tokenizer.encode(new_s2, return_tensors="pt").to(device)
+            ppl = perplexity_fn(model, new_s2_ids, tokenizer, device)
+            print(f"Change: `{s2_tokens[idx]}` -> `{t1}` \t {new_s2} \t {str(ppl)}")
+

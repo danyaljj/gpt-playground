@@ -1,6 +1,8 @@
 import torch
 import torch.nn.functional as F
 from torch import nn
+import numpy as np
+import json
 
 # used to prevent numerical issues
 from torch.nn import CrossEntropyLoss
@@ -51,6 +53,68 @@ def decode_with_one_hot(model, length, input_one_hot1, temperature, device):
         inputs_embeds1 = embed_inputs(model.get_input_embeddings(), logits, device=device)
     return logits_so_far
 
+def normalize(number):
+    return float(str(number))
+
+def perplexity_fn(model, input_ids, tokenizer, device):
+    max_length = model.config.n_positions
+    stride = 64
+
+    nlls = []
+    for i in range(0, input_ids.size(1), stride):
+        begin_loc = max(i + stride - max_length, 0)
+        end_loc = min(i + stride, input_ids.size(1))
+        trg_len = end_loc - i  # may be different from stride on last loop
+        input_ids = input_ids[:, begin_loc:end_loc].to(device)
+        target_ids = input_ids.clone()
+        target_ids[:, :-trg_len] = -100
+
+        with torch.no_grad():
+            outputs = model(input_ids, labels=target_ids)
+            loss = outputs.loss.detach().clone().data.cpu().numpy()
+            ppl = np.exp(loss)
+            ppl1 = normalize(ppl)
+
+            logits = outputs.logits.detach().cpu().numpy()
+            token_ids = input_ids[0].detach().cpu().numpy()
+            tokens = tokenizer.convert_ids_to_tokens(token_ids)
+            assert len(tokens) == len(token_ids)
+            logits_per_token = []
+            for position_id, token_id in enumerate(token_ids):
+                logits_per_token.append(
+                    {
+                        "token": tokens[position_id],
+                        "ppl": normalize(logits[0, position_id, token_id])
+                    }
+                )
+
+            loss = compute_cross_entropy_loss(outputs.logits, target_ids)
+            neg_log_likelihood = loss * trg_len  # outputs[0] = loss
+
+        nlls.append(neg_log_likelihood)
+
+    ppl2 = torch.exp(torch.stack(nlls).sum() / end_loc)
+
+    # compare these different ways of computing ppl; I think they are the same.
+    # print(f" * ppl1: {ppl1}")
+    # print(f" * ppl2: {ppl2}")
+    # print(f" * logits_per_token: {json.dumps(logits_per_token, indent=4, sort_keys=True)}")
+
+    return ppl1
+
+# https://github.com/huggingface/transformers/blob/56f50590d5a9ac881db9ee1753f4642cf3d33d28/src/transformers/models/gpt2/modeling_gpt2.py
+loss_fct = torch.nn.CrossEntropyLoss()
+
+def compute_cross_entropy_loss(lm_logits, labels):
+    loss = None
+    if labels is not None:
+        # Shift so that tokens < n predict n
+        shift_logits = lm_logits[..., :-1, :].contiguous()
+        shift_labels = labels[..., 1:].contiguous()
+        # Flatten the tokens
+        loss = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
+
+    return loss
 
 def decode_with_argmax(model, length, input_ids1, device):
     '''

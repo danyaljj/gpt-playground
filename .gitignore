@@ -153,3 +153,5 @@ dmypy.json
 cython_debug/
 
 */query-c4.py
+data/*
+/data/*
