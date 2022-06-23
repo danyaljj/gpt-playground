@@ -1,8 +1,8 @@
-version: v2-alpha
+version: v2
 description: prompting1
 tasks:
   - image:
-      beaker: 01G431T40C8NFD3VPRJY0PSD2A
+      beaker: 01G67MMT7ZC8NSB1HBPCED9T0R
     arguments: [
         python3,
         classification.py,

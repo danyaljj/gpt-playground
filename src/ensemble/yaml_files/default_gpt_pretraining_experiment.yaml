@@ -1,0 +1,38 @@
+version: v2
+description: gpt2-pretraining
+tasks:
+  - image:
+      beaker: 01G67R29DJV4M77APSXH4QTXMG
+    arguments: [
+        python3,
+        run_clm.py,
+        --model_name_or_path, gpt2,
+        --train_file, /data/2019/train.txt,
+        --validation_file, /data/2019/dev.txt,
+        --per_device_train_batch_size, 128,
+        --per_device_eval_batch_size, 128,
+        --do_train,
+        --do_eval,
+        --output_dir, outputs,
+        --save_total_limit,10,
+    ]
+    envVars:
+      - name: CUDA_VISIBLE_DEVICES
+        value: "0"
+      - name: WANDB_API_KEY
+        value: "0a552a9c1fd8db03c2a4559887f34a35a700ec01"
+      - name: WANDB_PROJECT
+        value: "gpt-pretraining"
+    datasets:
+      - mountPath: /data
+        source:
+          beaker: ds_0aqwwtcdnlf8
+    result:
+      path: /outputs
+    resources:
+      gpuCount: 1
+    context:
+      cluster: ai2/general-cirrascale
+      priority: low
+
+

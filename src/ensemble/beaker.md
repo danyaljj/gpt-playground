@@ -9,7 +9,7 @@
 - Step 2: build beaker dataset for your data: `beaker dataset create --name NAMEEE data --workspace ai2/ensembles`
 
 - Step 3: build docker image for the repo: `docker build -t ensembles .`
-- Step 3.1: build beaker image for our docker image: `beaker image create -n ensembles ensembles --workspace ai2/ensembles`
+- Step 3.1: build beaker image for our docker image: `beaker image create -n ensembles35 ensembles --workspace ai2/ensembles`
     - If you already have an image with this name, delete the old one: `beaker image delete -n ensembles`
 
 

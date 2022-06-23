@@ -18,37 +18,47 @@ cluster = "ai2/mosaic-cirrascale"
 
 multiberts = [ f'google/multiberts-seed_{idx}' for idx in range(0, 25) ]
 
-models = [
-    # "bert-base-cased",
-    # "bert-large-cased",
-    # "bert-base-uncased",
-    "bert-large-uncased",
-    # 'gpt2',
-    # 'gpt2-medium',
-    # 'gpt2-large',
-    # 'gpt2-xl',
-    # 'EleutherAI/gpt-neo-1.3B',
-    # 'EleutherAI/gpt-neo-2.7B',
-    # 'EleutherAI/gpt-j-6B',
-    # 'danyaljj/gpt-j-6B-step-318500',
-    # 'danyaljj/gpt-j-6B-step-328500',
-    # 'danyaljj/gpt-j-6B-step-338500',
-    # 'danyaljj/gpt-j-6B-step-348500',
-    # 'danyaljj/gpt-j-6B-step-358500',
-    # 'danyaljj/gpt-j-6B-step-378500',
-    # 'danyaljj/gpt-j-6B-step-384500',
-    # 'danyaljj/gpt-j-6B-step-384000',
-    # 'danyaljj/gpt-j-6B-step-383500',
-    # 'danyaljj/gpt-j-6B-step-383000',
-    # 'danyaljj/gpt-j-6B-step-382500',
-    # 'stanford-crfm/eowyn-gpt2-medium-x777',
-    # 'stanford-crfm/durin-gpt2-medium-x343',
-    # 'stanford-crfm/beren-gpt2-medium-x49',
-    # 'stanford-crfm/celebrimbor-gpt2-medium-x81',
-    # 'stanford-crfm/arwen-gpt2-medium-x21',
-    # 'roberta-base',
-    # 'roberta-large',
-]
+if True:
+    models = [
+        # "bert-base-cased",
+        # "bert-large-cased",
+        "bert-base-uncased",
+        "bert-large-uncased",
+        # 'gpt2',
+        # 'gpt2-medium',
+        # 'gpt2-large',
+        # 'gpt2-xl',
+        # 'EleutherAI/gpt-neo-1.3B',
+        # 'EleutherAI/gpt-neo-2.7B',
+        # 'EleutherAI/gpt-j-6B',
+        # 'danyaljj/gpt-j-6B-step-318500',
+        # 'danyaljj/gpt-j-6B-step-328500',
+        # 'danyaljj/gpt-j-6B-step-338500',
+        # 'danyaljj/gpt-j-6B-step-348500',
+        # 'danyaljj/gpt-j-6B-step-358500',
+        # 'danyaljj/gpt-j-6B-step-378500',
+        # 'danyaljj/gpt-j-6B-step-384500',
+        # 'danyaljj/gpt-j-6B-step-384000',
+        # 'danyaljj/gpt-j-6B-step-383500',
+        # 'danyaljj/gpt-j-6B-step-383000',
+        # 'danyaljj/gpt-j-6B-step-382500',
+        # 'stanford-crfm/eowyn-gpt2-medium-x777',
+        # 'stanford-crfm/durin-gpt2-medium-x343',
+        # 'stanford-crfm/beren-gpt2-medium-x49',
+        # 'stanford-crfm/celebrimbor-gpt2-medium-x81',
+        # 'stanford-crfm/arwen-gpt2-medium-x21',
+        # 'roberta-base',
+        # 'roberta-large',
+    ]
+    num_models = [-1]
+else:
+    num_models = [
+         # 1, 2, 3, 4, 5, 6, 7, 8, 9, 10
+        1, 2, 4, 8, 16
+        # 4, 8
+        # 1
+    ]
+    models = [-1]
 
 
 train_sizes = [
@@ -63,30 +73,26 @@ learning_rates = [
     2e-5, 1e-5, 4e-5 # 5e-5, 3e-5,
 ]
 
-num_models = [
-     # 1, 2, 3, 4, 5, 6, 7, 8, 9, 10
-    1, 2, 4, 8, 16
-    # 4, 8
-    # 1
-]
+
 
 non_linearity = [
-    True, False
-    # False
+    # True, False
+    False
 ]
 
 identical_models = True # for debugging purposes
 
 datasets = [
+    'arc_easy',
+    'arc_hard',
+    "mrpc",
+    "openbookqa",
+
     # "copa",
     # "boolq",
-    # "mrpc",
     # "hellaswag",
     # "swag",
-    'arc_easy',
-    # 'arc_hard',
     # "qasc",
-    # "openbookqa",
 ]
 
 

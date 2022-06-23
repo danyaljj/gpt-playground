@@ -66,11 +66,20 @@ def main(
         learning_rate=float,
         non_linearity=bool,
         num_models=int,
-        dataset_name= str,
+        dataset_name=str,
         identical_models=bool
 ):
-
-    tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=False)
+    # model_name and num_models can't be on at the same time
+    if model_name:
+        tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=False)
+        model = AutoModelForMultipleChoice.from_pretrained(model_name)
+    else:
+        tokenizer = AutoTokenizer.from_pretrained("google/multiberts-seed_0", use_fast=False)
+        bert_config = BertModel.from_pretrained("google/multiberts-seed_0").config
+        config = EnsembledBertConfig(num_models=num_models, non_linearity=non_linearity, **bert_config.to_dict())
+        model = EnsembledBertForMultipleChoice(config)
+        model.initialize_with_existing_berts(model_names_list=None, num_models=num_models,
+                                             identical_models=identical_models)
 
     def preprocess_function_arc(examples, q_key="question", max_candidates=5):
         # Repeat each first sentence four times to go with the four possibilities of second sentences.
@@ -202,7 +211,8 @@ def main(
         predictions, label_ids = eval_predictions
         preds = np.argmax(predictions, axis=1)
         accuracy = (preds == label_ids).astype(np.float32).mean().item()
-        precision, recall, f_score, accuracy3 = precision_recall_fscore_support(y_true=label_ids, y_pred=preds, average='macro')
+        precision, recall, f_score, accuracy3 = precision_recall_fscore_support(y_true=label_ids, y_pred=preds,
+                                                                                average='macro')
 
         return {
             "accuracy": accuracy,
@@ -229,7 +239,7 @@ def main(
         compute_metrics = compute_metrics_accuracy
     elif dataset_name == "openbookqa":
         datasets = load_dataset("openbookqa")
-        preprocess_function = partial(preprocess_function_arc,q_key="question_stem")
+        preprocess_function = partial(preprocess_function_arc, q_key="question_stem")
         compute_metrics = compute_metrics_accuracy
     elif dataset_name == "hellaswag":
         datasets = load_dataset("hellaswag")
@@ -276,13 +286,6 @@ def main(
     if test_size > 0:
         test_dataset = test_dataset.select(range(test_size))
 
-
-    # model = AutoModelForMultipleChoice.from_pretrained(model_name)
-    bert_config = BertModel.from_pretrained("google/multiberts-seed_0").config
-    config = EnsembledBertConfig(num_models=num_models, non_linearity=non_linearity, **bert_config.to_dict())
-    model = EnsembledBertForMultipleChoice(config)
-    model.initialize_with_existing_berts(model_names_list=None, num_models=num_models, identical_models=identical_models)
-
     training_args = TrainingArguments(
         output_dir=save_dir,
         save_total_limit=1,
@@ -322,7 +325,7 @@ def main(
     m2 = trainer.evaluate(dev_dataset, metric_key_prefix="final_dev")
 
     if dataset_name in ['copa']:
-        m1 = m2 # don't evaluate on the test set
+        m1 = m2  # don't evaluate on the test set
     else:
         m1 = trainer.evaluate(test_dataset, metric_key_prefix="final_test")
 
@@ -368,6 +371,21 @@ if __name__ == "__main__":
     for i in range(torch.cuda.device_count()):
         print('torch.cuda.get_device_name(i)', torch.cuda.get_device_name(i))
 
+    assert type(args.num_models) == str, type(args.num_models)
+
+    if args.num_models != "-1" and args.model != "-1":
+        raise Exception("num_models and model can't be active as the same time")
+
+    if args.num_models != "-1":
+        args.num_models = int(args.num_models),
+    else:
+        args.num_models = None
+
+    if args.model != "-1":
+        pass
+    else:
+        args.model = None
+
     main(
         args.model,
         train_size=int(args.train_size),
@@ -378,7 +396,7 @@ if __name__ == "__main__":
         save_dir=args.save_dir,
         learning_rate=float(args.learning_rate),
         non_linearity=args.non_linearity,
-        num_models=int(args.num_models),
+        num_models=args.num_models,
         dataset_name=args.dataset,
         identical_models=args.identical_models
     )
