@@ -73,6 +73,12 @@ def main(
     if model_name:
         tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=False)
         model = AutoModelForMultipleChoice.from_pretrained(model_name)
+
+        # freee the whole model except the last later
+        if True:
+            for param in model.bert.parameters():
+                param.requires_grad = False
+
     else:
         tokenizer = AutoTokenizer.from_pretrained("google/multiberts-seed_0", use_fast=False)
         bert_config = BertModel.from_pretrained("google/multiberts-seed_0").config
@@ -315,6 +321,7 @@ def main(
     metrics = json.load(states)
     metrics['model_name'] = model_name
     metrics['learning_rate'] = learning_rate
+    metrics['dataset_name'] = dataset_name
     metrics['epochs'] = epochs
     metrics['num_models'] = num_models
     metrics['non_linearity'] = non_linearity
@@ -325,7 +332,7 @@ def main(
     m2 = trainer.evaluate(dev_dataset, metric_key_prefix="final_dev")
 
     if dataset_name in ['copa']:
-        m1 = m2  # don't evaluate on the test set
+        m1 = m2  # doesn't evaluate on the test set
     else:
         m1 = trainer.evaluate(test_dataset, metric_key_prefix="final_test")
 

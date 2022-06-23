@@ -2,7 +2,7 @@ version: v2
 description: prompting1
 tasks:
   - image:
-      beaker: 01G67MMT7ZC8NSB1HBPCED9T0R
+      beaker: 01G68SAC1K9AR081EXF9JV4K5W
     arguments: [
         python3,
         classification.py,
