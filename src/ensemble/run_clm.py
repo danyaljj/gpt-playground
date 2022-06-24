@@ -302,6 +302,14 @@ def main():
             revision=model_args.model_revision,
             use_auth_token=True if model_args.use_auth_token else None,
         )
+        print(" ================ freezing the parameters of the model ====================")
+
+        if hasattr(model, 'transformer'):
+            print(" ===> no gradients for 'transformer' parameters ")
+            for param in model.transformer.parameters():
+                param.requires_grad = False
+
+        print(" ===========================================================================")
     else:
         logger.info("Training new model from scratch")
         model = AutoModelForCausalLM.from_config(config)
