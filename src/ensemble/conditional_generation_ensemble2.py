@@ -142,10 +142,12 @@ class EnsembledGPT2LMHeadModel(PreTrainedModel):
 
         for o in outputs:
             combined_logits.append(o.logits)
-            combined_loss.append(o.loss)
+            if o.loss:
+                combined_loss.append(o.loss)
 
         combined_logits = torch.stack(combined_logits, dim=-1).sum(dim=-1) * (1 / len(combined_logits))
-        combined_loss = sum(combined_loss)
+        if len(combined_loss) > 0:
+            combined_loss = sum(combined_loss)
         # hidden_states = torch.cat([out.last_hidden_state[:, 0, :] for out in outputs], dim=1)  # [batch_size, 2 * hidden_size]
         # Set device for model parallelism
         # if self.model_parallel:
