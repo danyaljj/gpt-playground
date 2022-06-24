@@ -16,13 +16,13 @@ cluster = "ai2/mosaic-cirrascale"
 # cluster = "ai2/danielk-a100-cluster-50"
 # cluster = "ai2/danielk-a100-cluster-10"
 
-multiberts = [ f'google/multiberts-seed_{idx}' for idx in range(0, 25) ]
+multiberts = [f'google/multiberts-seed_{idx}' for idx in range(0, 25)]
 
 if True:
     models = [
         # "bert-base-cased",
         # "bert-large-cased",
-        "bert-base-uncased",
+        # "bert-base-uncased",
         "bert-large-uncased",
         # 'gpt2',
         # 'gpt2-medium',
@@ -53,34 +53,39 @@ if True:
     num_models = [-1]
 else:
     num_models = [
-         # 1, 2, 3, 4, 5, 6, 7, 8, 9, 10
+        # 1, 2, 3, 4, 5, 6, 7, 8, 9, 10
         1, 2, 4, 8, 16
         # 4, 8
         # 1
     ]
     models = [-1]
 
-
 train_sizes = [
     -1
 ]
 
 epochs = [
+    # large model
+    # 1, 2, 3, 4, 5# 7, 9, 11, 13
+
+    # ensemble
     9, 11, 13
 ]
 
 learning_rates = [
-    2e-5, 1e-5, 4e-5 # 5e-5, 3e-5,
+    # large model
+    # 2e-5, 1e-5, 4e-5, 5e-5, 3e-5, 1e-4
+    # 1e-4
+    # ensemble
+    2e-5, 1e-5, 4e-5,
 ]
-
-
 
 non_linearity = [
     # True, False
     False
 ]
 
-identical_models = True # for debugging purposes
+identical_models = True  # for debugging purposes
 
 datasets = [
     'arc_easy',
@@ -95,9 +100,7 @@ datasets = [
     # "qasc",
 ]
 
-
 d1 = yaml.load(default_yaml)
-
 
 for dataset in datasets:
     for model in models:
@@ -106,10 +109,9 @@ for dataset in datasets:
                 for epoch in epochs:
                     for learning_rate in learning_rates:
                         for nl in non_linearity:
-
                             d = copy.deepcopy(d1)
 
-                            batch_size = 2
+                            batch_size = 4
                             # if num <= 3:
                             #     batch_size = 16
                             # elif num <= 6:
@@ -152,7 +154,8 @@ for dataset in datasets:
                             d['tasks'][0]['arguments'][task_idx] = nl
 
                             task_idx = 15
-                            assert d['tasks'][0]['arguments'][task_idx] == 'arc_easy', d['tasks'][0]['arguments'][task_idx]
+                            assert d['tasks'][0]['arguments'][task_idx] == 'arc_easy', d['tasks'][0]['arguments'][
+                                task_idx]
                             d['tasks'][0]['arguments'][task_idx] = dataset
 
                             task_idx = 17
