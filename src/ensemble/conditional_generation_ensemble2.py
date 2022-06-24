@@ -23,16 +23,17 @@ ALL_MODELS_SMALL = [
 ]
 
 mapping_revision_from_model = {
-    'alias-gpt2-small-x21': '41b0b17afa98a105d768d7a7e29a7c994cfe48dc',
-    'battlestar-gpt2-small-x49': '3518225c1dac26db77462aa05ecb97a2cdd7a340',
-    'caprica-gpt2-small-x81': 'e726b453a62eead96777d1c00e127ff3ef11e754',
-    'darkmatter-gpt2-small-x343': '26347553202c0936b8147fa450d89cb0e6d8d661',
-    'expanse-gpt2-small-x777': '74b5cd419d568e6f42ae470363227deec7328712',
-    'arwen-gpt2-medium-x21': '68e01476dfb0bbbf3850a553a37c22c132aa4b71',
-    'beren-gpt2-medium-x49': 'ebb67d0d5dcb4829fb358ee9db02c2485c82984b',
-    'celebrimbor-gpt2-medium-x81': 'd76ea84327a8e25533f9683e480a8fb6b9f167be',
-    'durin-gpt2-medium-x343': '3c72a1446d7a51dd686d91d5aa5b6db6f140e4f6',
-    'eowyn-gpt2-medium-x777': '6032ec5898a88c22a7ac79d1d440370bce5af987'
+    'stanford-crfm/alias-gpt2-small-x21': '41b0b17afa98a105d768d7a7e29a7c994cfe48dc',
+    'stanford-crfm/battlestar-gpt2-small-x49': '3518225c1dac26db77462aa05ecb97a2cdd7a340',
+    'stanford-crfm/caprica-gpt2-small-x81': 'e726b453a62eead96777d1c00e127ff3ef11e754',
+    'stanford-crfm/darkmatter-gpt2-small-x343': '26347553202c0936b8147fa450d89cb0e6d8d661',
+    'stanford-crfm/expanse-gpt2-small-x777': '74b5cd419d568e6f42ae470363227deec7328712',
+
+    'stanford-crfm/arwen-gpt2-medium-x21': '68e01476dfb0bbbf3850a553a37c22c132aa4b71',
+    'stanford-crfm/beren-gpt2-medium-x49': 'ebb67d0d5dcb4829fb358ee9db02c2485c82984b',
+    'stanford-crfm/celebrimbor-gpt2-medium-x81': 'd76ea84327a8e25533f9683e480a8fb6b9f167be',
+    'stanford-crfm/durin-gpt2-medium-x343': '3c72a1446d7a51dd686d91d5aa5b6db6f140e4f6',
+    'stanford-crfm/eowyn-gpt2-medium-x777': '6032ec5898a88c22a7ac79d1d440370bce5af987'
 }
 
 class EnsembledGPT2Config(GPT2Config):
@@ -87,7 +88,8 @@ class EnsembledGPT2LMHeadModel(PreTrainedModel):
 
         for idx, model_name in enumerate(model_names):
             print(f" *** setting parameters of model {model_name}")
-            model1 = GPT2LMHeadModel.from_pretrained(model_name)
+            revision = mapping_revision_from_model[model_name]
+            model1 = GPT2LMHeadModel.from_pretrained(model_name, revision=revision)
             self.model[idx].load_state_dict(model1.state_dict())
 
             # TODO: make this a parameter for our evaluations
@@ -188,7 +190,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
     print(json.dumps(vars(args)))
 
-    tokenizer = GPT2Tokenizer.from_pretrained(ALL_MODELS_SMALL[0])
+    revision = mapping_revision_from_model[ALL_MODELS_SMALL[0]]
+    tokenizer = GPT2Tokenizer.from_pretrained(ALL_MODELS_SMALL[0], revision=revision)
     # device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     gpt_config = GPT2LMHeadModel.from_pretrained(ALL_MODELS_SMALL[0]).config
 
