@@ -221,4 +221,5 @@ if __name__ == "__main__":
     # labels = tokenizer(" a nice coffeeshop in Seattle.", return_tensors="pt")
 
     outputs = model.forward(input_ids = input_ids['input_ids'], labels=input_ids['input_ids'])
-    model.generate(input_ids['input_ids'])
+    res = model.generate(input_ids['input_ids'])
+    tokenizer.batch_decode(res, skip_special_tokens=True)
