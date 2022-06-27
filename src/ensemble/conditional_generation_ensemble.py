@@ -36,6 +36,7 @@ mapping_revision_from_model = {
     'stanford-crfm/eowyn-gpt2-medium-x777': '6032ec5898a88c22a7ac79d1d440370bce5af987'
 }
 
+
 class EnsembledGPT2Config(GPT2Config):
     def __init__(
             self,
@@ -59,7 +60,8 @@ class EnsembledGPT2LMHeadModel(PreTrainedModel):
         )  # initialize with empty models
 
         # MSCLAR: simplest is a linear layer, check bounds of this and then also include some non-linearity nn.ReLU()
-        assert type(self.config.non_linearity) == bool, "non_linearity must be boolean but it is {}".format(type(self.config.non_linearity))
+        assert type(self.config.non_linearity) == bool, "non_linearity must be boolean but it is {}".format(
+            type(self.config.non_linearity))
         if self.config.non_linearity:
             hidden_size = len(self.model) * self.config.hidden_size // 5
             self.lm_head = torch.nn.Sequential(
@@ -93,8 +95,8 @@ class EnsembledGPT2LMHeadModel(PreTrainedModel):
             self.model[idx].load_state_dict(model1.state_dict())
 
             # TODO: make this a parameter for our evaluations
-            for p in self.model[idx].parameters():
-                p.requires_grad = False
+            # for p in self.model[idx].parameters():
+            #     p.requires_grad = False
 
     def forward(
             self,
@@ -134,7 +136,7 @@ class EnsembledGPT2LMHeadModel(PreTrainedModel):
                 inputs_embeds=inputs_embeds,
                 encoder_hidden_states=encoder_hidden_states,
                 encoder_attention_mask=encoder_attention_mask,
-                labels = labels,
+                labels=labels,
                 use_cache=use_cache,
                 output_attentions=output_attentions,
                 output_hidden_states=output_hidden_states,
@@ -179,6 +181,11 @@ class EnsembledGPT2LMHeadModel(PreTrainedModel):
             # cross_attentions=transformer_outputs.cross_attentions,
         )
 
+    def resize_token_embeddings(self, *args, **kwargs):
+        for i in range(len(self.model)):
+            self.model[i].resize_token_embeddings(*args, **kwargs)
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='')
     parser.add_argument('--num_models', type=int, default=2)
@@ -196,7 +203,7 @@ if __name__ == "__main__":
     gpt_config = GPT2LMHeadModel.from_pretrained(ALL_MODELS_SMALL[0]).config
 
     path = f'ensembed_gpt_{args.num_models}'
-    if not args.load_model:
+    if args.load_model:
         # initialize an empty GPT2 ensemble
         non_linearity = True if args.non_linearity else False
         config = EnsembledGPT2Config(num_models=args.num_models, non_linearity=non_linearity, **gpt_config.to_dict())
@@ -223,6 +230,9 @@ if __name__ == "__main__":
     input_ids = tokenizer("The best vacation place is", return_tensors="pt")
     # labels = tokenizer(" a nice coffeeshop in Seattle.", return_tensors="pt")
 
-    outputs = model.forward(input_ids = input_ids['input_ids'], labels=input_ids['input_ids'])
+    outputs = model.forward(
+        input_ids=input_ids['input_ids'],
+        labels=input_ids['input_ids']
+    )
     res = model.generate(input_ids['input_ids'])
-    tokenizer.batch_decode(res, skip_special_tokens=True)
+    print(tokenizer.batch_decode(res, skip_special_tokens=True))

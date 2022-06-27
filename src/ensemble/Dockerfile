@@ -23,3 +23,4 @@ COPY multiple_choice_ensemble.py .
 COPY multiple_choice_ensemble_with_parallelization.py .
 COPY create_datasets_by_averaging_multiple_models.py .
 COPY run_clm.py .
+COPY conditional_generation_ensemble.py .

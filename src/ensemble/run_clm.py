@@ -27,8 +27,9 @@ import os
 import sys
 from dataclasses import dataclass, field
 from typing import Optional
-
+from conditional_generation_ensemble import *
 from datasets import load_dataset
+from transformers import GPT2LMHeadModel
 
 import transformers
 from transformers import (
@@ -269,13 +270,13 @@ def main():
         "revision": model_args.model_revision,
         "use_auth_token": True if model_args.use_auth_token else None,
     }
-    if model_args.config_name:
-        config = AutoConfig.from_pretrained(model_args.config_name, **config_kwargs)
-    elif model_args.model_name_or_path:
-        config = AutoConfig.from_pretrained(model_args.model_name_or_path, **config_kwargs)
-    else:
-        config = CONFIG_MAPPING[model_args.model_type]()
-        logger.warning("You are instantiating a new config instance from scratch.")
+    # if model_args.config_name:
+    #     config = AutoConfig.from_pretrained(model_args.config_name, **config_kwargs)
+    # elif model_args.model_name_or_path:
+    #     config = AutoConfig.from_pretrained(model_args.model_name_or_path, **config_kwargs)
+    # else:
+    #     config = CONFIG_MAPPING[model_args.model_type]()
+    #     logger.warning("You are instantiating a new config instance from scratch.")
 
     tokenizer_kwargs = {
         "cache_dir": model_args.cache_dir,
@@ -283,38 +284,49 @@ def main():
         "revision": model_args.model_revision,
         "use_auth_token": True if model_args.use_auth_token else None,
     }
-    if model_args.tokenizer_name:
-        tokenizer = AutoTokenizer.from_pretrained(model_args.tokenizer_name, **tokenizer_kwargs)
-    elif model_args.model_name_or_path:
-        tokenizer = AutoTokenizer.from_pretrained(model_args.model_name_or_path, **tokenizer_kwargs)
-    else:
-        raise ValueError(
-            "You are instantiating a new tokenizer from scratch. This is not supported by this script."
-            "You can do it from another script, save it, and load it from here, using --tokenizer_name."
-        )
+    # if model_args.tokenizer_name:
+    #     tokenizer = AutoTokenizer.from_pretrained(model_args.tokenizer_name, **tokenizer_kwargs)
+    # elif model_args.model_name_or_path:
+    #
+    # else:
+    #     raise ValueError(
+    #         "You are instantiating a new tokenizer from scratch. This is not supported by this script."
+    #         "You can do it from another script, save it, and load it from here, using --tokenizer_name."
+    #     )
 
     if model_args.model_name_or_path:
-        model = AutoModelForCausalLM.from_pretrained(
-            model_args.model_name_or_path,
-            from_tf=bool(".ckpt" in model_args.model_name_or_path),
-            config=config,
-            cache_dir=model_args.cache_dir,
-            revision=model_args.model_revision,
-            use_auth_token=True if model_args.use_auth_token else None,
-        )
-        print(" ================ freezing the parameters of the model ====================")
-
-        if hasattr(model, 'transformer'):
-            print(" ===> no gradients for 'transformer' parameters ")
-            for param in model.transformer.parameters():
-                param.requires_grad = False
-
-        print(" ===========================================================================")
+        if model_args.model_name_or_path == "ensemble":
+            name = ALL_MODELS_SMALL[0]
+            revision = mapping_revision_from_model[name]
+            gpt_config = GPT2LMHeadModel.from_pretrained(name, revision=revision).config
+            config = EnsembledGPT2Config(num_models=2, non_linearity=False, **gpt_config.to_dict())
+            model = EnsembledGPT2LMHeadModel(config)
+            model.initialize_with_existing_models(model_names_list=None, num_models=2)
+            tokenizer = AutoTokenizer.from_pretrained(name, revision=revision)
+        else:
+            config = AutoConfig.from_pretrained(model_args.model_name_or_path, **config_kwargs)
+            model = AutoModelForCausalLM.from_pretrained(
+                model_args.model_name_or_path,
+                from_tf=bool(".ckpt" in model_args.model_name_or_path),
+                config=config,
+                cache_dir=model_args.cache_dir,
+                revision=model_args.model_revision,
+                use_auth_token=True if model_args.use_auth_token else None,
+            )
+            tokenizer = AutoTokenizer.from_pretrained(model_args.model_name_or_path, **tokenizer_kwargs)
+        # print(" ================ freezing the parameters of the model ====================")
+        # if hasattr(model, 'transformer'):
+        #     print(" ===> no gradients for 'transformer' parameters ")
+        #     for param in model.transformer.parameters():
+        #         param.requires_grad = False
+        #
+        # print(" ===========================================================================")
     else:
         logger.info("Training new model from scratch")
-        model = AutoModelForCausalLM.from_config(config)
+        raise Exception(" model is undefined ...")
+        # model = AutoModelForCausalLM.from_config(config)
 
-    model.resize_token_embeddings(len(tokenizer))
+    # model.resize_token_embeddings(len(tokenizer))
 
     # Preprocessing the datasets.
     # First we tokenize all the texts.
