@@ -67,8 +67,8 @@ class EnsembledBertForMultipleChoice(PreTrainedModel):
             self.bert_models[idx].load_state_dict(model1.state_dict())
 
             # TODO: make this a parameter for our evaluations
-            for p in self.bert_models[idx].parameters():
-                p.requires_grad = False
+            # for p in self.bert_models[idx].parameters():
+            #     p.requires_grad = False
 
     def forward(
             self,

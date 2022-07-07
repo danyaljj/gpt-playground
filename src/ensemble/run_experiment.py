@@ -20,7 +20,7 @@ multiberts = [f'google/multiberts-seed_{idx}' for idx in range(0, 25)]
 
 if True:
     models = [
-        # "bert-base-cased",
+        "bert-base-cased",
         # "bert-large-cased",
         # "bert-base-uncased",
         "bert-large-uncased",

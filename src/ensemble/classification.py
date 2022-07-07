@@ -75,9 +75,9 @@ def main(
         model = AutoModelForMultipleChoice.from_pretrained(model_name)
 
         # freee the whole model except the last later
-        if True:
-            for param in model.bert.parameters():
-                param.requires_grad = False
+        # if True:
+        #     for param in model.bert.parameters():
+        #         param.requires_grad = False
 
     else:
         tokenizer = AutoTokenizer.from_pretrained("google/multiberts-seed_0", use_fast=False)
