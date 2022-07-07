@@ -18,7 +18,7 @@ cluster = "ai2/mosaic-cirrascale"
 
 multiberts = [f'google/multiberts-seed_{idx}' for idx in range(0, 25)]
 
-if True:
+if False:
     models = [
         "bert-base-cased",
         # "bert-large-cased",
@@ -58,7 +58,7 @@ else:
         # 4, 8
         # 1
     ]
-    models = [-1]
+    models = ["-1"]
 
 train_sizes = [
     -1
@@ -126,7 +126,7 @@ for dataset in datasets:
                             assert d['tasks'][0]['context']['cluster'] == "ai2/mosaic-cirrascale"
                             d['tasks'][0]['context']['cluster'] = cluster
 
-                            name = f"experiment_train_size={train_size}-model={model.replace('/', '_')}-lr={learning_rate}-epoch={epoch}-num_models={num}-identical_models={identical_models}-dataset={dataset}-non_linearity={nl}-batch_size={batch_size}"
+                            name = f"nothing_frozen_train_size={train_size}-model={model.replace('/', '_')}-lr={learning_rate}-epoch={epoch}-num_models={num}-identical_models={identical_models}-dataset={dataset}-non_linearity={nl}-batch_size={batch_size}"
                             d['description'] = name
 
                             task_idx = 3

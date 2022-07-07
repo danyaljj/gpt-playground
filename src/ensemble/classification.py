@@ -384,7 +384,7 @@ if __name__ == "__main__":
         raise Exception("num_models and model can't be active as the same time")
 
     if args.num_models != "-1":
-        args.num_models = int(args.num_models),
+        args.num_models = int(args.num_models)
     else:
         args.num_models = None
 

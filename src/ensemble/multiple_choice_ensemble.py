@@ -31,6 +31,10 @@ class EnsembledBertForMultipleChoice(PreTrainedModel):
     def __init__(self, config):
         super().__init__(config)
 
+
+        print(self.config.num_models)
+        print(self.config)
+        print(self)
         self.bert_models = torch.nn.ModuleList(
             [BertModel(config) for _ in range(self.config.num_models)]
         )  # initialize with empty models
