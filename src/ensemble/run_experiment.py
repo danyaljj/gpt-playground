@@ -6,7 +6,8 @@ import time
 with open("yaml_files/default_experiment.yaml", 'r') as f:
     default_yaml = f.read()
 
-cluster = "ai2/mosaic-cirrascale"
+# cluster = "ai2/mosaic-cirrascale"
+cluster = "ai2/mosaic-cirrascale-a100"
 # cluster = "ai2/aristo-cirrascale"
 # cluster = "ai2/s2-cirrascale"
 # cluster = "ai2/karenq-a100-cluster_90"
@@ -54,7 +55,8 @@ if False:
 else:
     num_models = [
         # 1, 2, 3, 4, 5, 6, 7, 8, 9, 10
-        1, 2, 4, 8, 16
+        # 1, 2, 4, 8
+        16, 25
         # 4, 8
         # 1
     ]
@@ -85,7 +87,7 @@ non_linearity = [
     False
 ]
 
-identical_models = True  # for debugging purposes
+identical_models = False  # for debugging purposes
 
 datasets = [
     'arc_easy',
@@ -126,7 +128,7 @@ for dataset in datasets:
                             assert d['tasks'][0]['context']['cluster'] == "ai2/mosaic-cirrascale"
                             d['tasks'][0]['context']['cluster'] = cluster
 
-                            name = f"nothing_frozen_train_size={train_size}-model={model.replace('/', '_')}-lr={learning_rate}-epoch={epoch}-num_models={num}-identical_models={identical_models}-dataset={dataset}-non_linearity={nl}-batch_size={batch_size}"
+                            name = f"nothing_frozen_corrected_bug_train_size={train_size}-model={model.replace('/', '_')}-lr={learning_rate}-epoch={epoch}-num_models={num}-identical_models={identical_models}-dataset={dataset}-non_linearity={nl}-batch_size={batch_size}"
                             d['description'] = name
 
                             task_idx = 3
