@@ -140,11 +140,16 @@ def decode_with_argmax(model, length, input_ids1, device):
 
 
 # given a sentence return an embedded version of it
-def embed_sentence(model, input_ids, device):
+def embed_sentence_with_gpt(model, input_ids, device, token_index):
     logits = decode_with_argmax(model, input_ids.shape[1], input_ids, device=device)
     # use the logits of the last word
     logits = logits[0][0][-1]
     return embed_inputs(model.get_input_embeddings(), logits, device=device)
+
+def embed_sentence_with_bert(model, input_ids, device, token_index):
+    output = model(input_ids)
+    last_hidden_state = output.last_hidden_state
+    return last_hidden_state[0][token_index]
 
 
 def embed_inputs(embedding, logits, device, print_entropy=False):
