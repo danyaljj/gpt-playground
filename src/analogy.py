@@ -1,46 +1,52 @@
 import copy
 
-from transformers import GPT2LMHeadModel, GPT2Tokenizer, GPTJForCausalLM, AutoTokenizer
+# from transformers import GPT2LMHeadModel, GPT2Tokenizer, GPTJForCausalLM, AutoTokenizer
+from transformers import GPT2LMHeadModel, GPT2Tokenizer, AutoTokenizer, BertModel, BertTokenizer
 import torch
-from utils import embed_sentence, perplexity_fn
+from utils import embed_sentence_with_gpt, embed_sentence_with_bert, perplexity_fn
 from tqdm import tqdm
 from numpy.linalg import norm
 import numpy as np
 
-cache_dir = "/net/nfs2.mosaic/danielk/hf_cache"
-device = 'cuda'
+# cache_dir = "/net/nfs2.mosaic/danielk/hf_cache"
+device = 'cpu'
 
 if False:
     model_name = 'EleutherAI/gpt-j-6B'
     tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=cache_dir)
     model = GPTJForCausalLM.from_pretrained(model_name, low_cpu_mem_usage=True, cache_dir=cache_dir)
 #     , revision="float16", torch_dtype=torch.float16
-else:
+elif False:
     # model_name = 'gpt2-xl'
     model_name = 'distilgpt2'
-    tokenizer = GPT2Tokenizer.from_pretrained(model_name, cache_dir=cache_dir)
-    model = GPT2LMHeadModel.from_pretrained(model_name, output_hidden_states=True, cache_dir=cache_dir)
+    tokenizer = GPT2Tokenizer.from_pretrained(model_name)
+    model = GPT2LMHeadModel.from_pretrained(model_name, output_hidden_states=True)
+else:
+    model_name = "bert-base-uncased"
+    tokenizer = BertTokenizer.from_pretrained(model_name)
+    model = BertModel.from_pretrained(model_name)
 
-model.to('cuda')
+model.eval()
+# model.to('cuda')
 
 
-def extract_heatmap(fillers1, fillers2, s1_template, s2_template, label1, label2):
+def extract_heatmap(fillers1, fillers2, s1_template, s2_template, label1, label2, embedder):
     import numpy as np
     similarity_templates = np.random.randn(len(fillers1), len(fillers2))
 
-    for idx1, f1 in enumerate(tqdm(fillers1)):
-        for idx2, f2 in enumerate(fillers2):
+    for token_index1, f1 in enumerate(tqdm(fillers1)):
+        for token_index2, f2 in enumerate(fillers2):
             s1 = s1_template(f1)
             s2 = s2_template(f2)
 
             ids1 = tokenizer.encode(s1, return_tensors="pt").to(device)
             ids2 = tokenizer.encode(s2, return_tensors="pt").to(device)
 
-            embed1 = embed_sentence(model, ids1, device).detach().cpu().numpy()
-            embed2 = embed_sentence(model, ids2, device).detach().cpu().numpy()
+            embed1 = embedder(model, ids1, device, token_index1).detach().cpu().numpy()
+            embed2 = embedder(model, ids2, device, token_index2).detach().cpu().numpy()
 
             # similarity_templates[idx1][idx2] = np.dot(dog_embed, duck_embed)
-            similarity_templates[idx1][idx2] = np.dot(embed1, embed2) / (norm(embed1) * norm(embed2))
+            similarity_templates[token_index1][token_index2] = np.dot(embed1, embed2) / (norm(embed1) * norm(embed2))
 
     # plot a heatmap of the similarity templates
     import matplotlib.pyplot as plt
@@ -48,6 +54,90 @@ def extract_heatmap(fillers1, fillers2, s1_template, s2_template, label1, label2
     ax = sns.heatmap(similarity_templates, xticklabels=fillers2, yticklabels=fillers1, cmap="YlGnBu")
     ax.set(xlabel=label2, ylabel=label1)
     plt.show()
+
+def extract_heatmap_bert(s1, s2, embedder):
+    import numpy as np
+
+    s1_tokens = tokenizer.encode(s1, return_tensors="pt").to(device)
+    s2_tokens = tokenizer.encode(s2, return_tensors="pt").to(device)
+
+    s1_token_str = tokenizer.convert_ids_to_tokens(s1_tokens[0])
+    s2_token_str = tokenizer.convert_ids_to_tokens(s2_tokens[0])
+
+    import numpy as np
+    similarity_templates = np.random.randn(len(s1_tokens[0]), len(s2_tokens[0]))
+
+    print(s1_tokens)
+
+    for token_index1, _ in tqdm(enumerate(s1_tokens[0])):
+        for token_index2, _ in enumerate(s2_tokens[0]):
+
+            embed1 = embedder(model, s1_tokens, device, token_index1).detach().cpu().numpy()
+            embed2 = embedder(model, s2_tokens, device, token_index2).detach().cpu().numpy()
+
+            # similarity_templates[idx1][idx2] = np.dot(dog_embed, duck_embed)
+            similarity_templates[token_index1][token_index2] = np.dot(embed1, embed2) / (norm(embed1) * norm(embed2))
+
+            if similarity_templates[token_index1][token_index2] < 0.15:
+                similarity_templates[token_index1][token_index2] = -1.0
+
+    # plot a heatmap of the similarity templates
+    import matplotlib.pyplot as plt
+    import seaborn as sns
+    ax = sns.heatmap(similarity_templates, xticklabels=s2_token_str, yticklabels=s1_token_str, cmap="YlGnBu")
+    # ax.set(xlabel=label2, ylabel=label1)
+    # flip the y axis
+    ax.invert_yaxis()
+    plt.show()
+
+    if True:
+
+        excluded_set = ['[CLS]', '[SEP]', '.']
+
+        import matplotlib.pyplot as plt2
+        # extract bipartite matching
+        from scipy.optimize import linear_sum_assignment
+        row_ind, col_ind = linear_sum_assignment(-similarity_templates)
+        print("matching: ")
+        print(row_ind, col_ind)
+        for i, j in zip(row_ind, col_ind):
+            print(f"{s1_token_str[i]} <-> {s2_token_str[j]}")
+
+        # plot the bipartite graph
+        import networkx as nx
+        B = nx.Graph()
+        B.add_nodes_from([x for x in s1_token_str if x not in excluded_set], bipartite=0)  # Add the node attribute "bipartite"
+        B.add_nodes_from([x + " " for x in s2_token_str if x not in excluded_set], bipartite=1)
+
+        edges = []
+        for i, j in zip(row_ind, col_ind):
+            if s1_token_str[i] not in excluded_set and s2_token_str[j] not in excluded_set:
+                edges.append((s1_token_str[i], s2_token_str[j] + " "))
+
+        B.add_edges_from(edges)
+
+        from networkx import bipartite
+        # bottom_nodes, top_nodes = bipartite.sets(B, top_nodes=s1_token_str)
+
+
+        color = bipartite.color(B)
+        color_list = []
+
+        for c in color.values():
+            # if c == 0:
+            #     color_list.append('r')
+            # else:
+            color_list.append('lightblue')
+
+        # Draw bipartite graph
+        pos = dict()
+        # color = []
+        pos.update((n, (1, i)) for i, n in enumerate([x for x in s1_token_str  if x not in excluded_set]))  # put nodes from X at x=1
+        pos.update((n, (2, i)) for i, n in enumerate([x + " " for x in s2_token_str if x not in excluded_set]))  # put nodes from Y at x=2
+
+        nx.draw(B, pos=pos, with_labels=True, node_color = color_list, font_size=12, style=':')
+        plt2.show()
+
 
 
 def plot_tsne(model, sentences):
@@ -92,6 +182,12 @@ if False:
         "peck",
     ]
 
+    fillers3 = [
+        "jump",
+        "lick",
+        "meow",
+    ]
+
 
     def s1_template(filler):
         return f"Dogs {filler}"
@@ -100,10 +196,15 @@ if False:
     def s2_template(filler):
         return f"Ducks are known to {filler}"
 
+    def s3_template(filler):
+        return f"Cats are known to {filler}"
+
 
     label1 = 'dog'
     label2 = 'duck'
-    extract_heatmap(fillers1, fillers2, s1_template, s2_template, label1, label2)
+    label3 = 'cat'
+    # extract_heatmap(fillers1, fillers2, s1_template, s2_template, label1, label2)
+    extract_heatmap(fillers1, fillers3, s1_template, s3_template, label1, label3)
 elif False:
     fillers1 = [
         "used to be boys.",
@@ -132,7 +233,6 @@ elif False:
     label2 = 'Cat'
 
     extract_heatmap(fillers1, fillers2, s1_template, s2_template, label1, label2)
-
 elif False:
     sentences = [[x, "red"] for x in
                  [
@@ -527,7 +627,7 @@ elif False:
         safety_annotations = sorted(safety_annotation_counts.items(), key=lambda x: x[1], reverse=True)
         for x in safety_annotations[:100]:
             print(str(x[1]) + "\t" + str(x[0]))
-elif True:
+elif False:
     # TODO: compare the perplexity of the two sentences
 
     s1 = "Cats are known to meow."
@@ -552,4 +652,26 @@ elif True:
             new_s2_ids = tokenizer.encode(new_s2, return_tensors="pt").to(device)
             ppl = perplexity_fn(model, new_s2_ids, tokenizer, device)
             print(f"Change: `{s2_tokens[idx]}` -> `{t1}` \t {new_s2} \t {str(ppl)}")
+elif False:
+    def embedding_distance(s1, s2):
 
+        s1_ids = tokenizer.encode(s1, return_tensors="pt").to(device)
+        s2_ids = tokenizer.encode(s2, return_tensors="pt").to(device)
+        embed1 = embed_sentence(model, s1_ids, device).detach().cpu().numpy()
+        embed2 = embed_sentence(model, s2_ids, device).detach().cpu().numpy()
+        sim = np.dot(embed1, embed2) / (norm(embed1) * norm(embed2))
+        print(f"{s1} \t {s2} \t {sim}")
+
+
+    embedding_distance("Cats are known to meow.", "Dogs are known to bark.")
+    embedding_distance("man to woman", "boy to girl")
+    embedding_distance("man to woman", "jackie to jelly")
+elif True:
+    # sent1 = f"Cats are known to meow."
+    sent1 = f"Cats are known for their meowing."
+    sent2 = f"Dogs often bark."
+    # sent2 = f"Dogs are known for their barking."
+    # sent2 = f"Dogs often bark."
+
+    # extract_heatmap(fillers1, fillers2, s1_template, s2_template, label1, label2)
+    extract_heatmap_bert(sent1, sent2, embed_sentence_with_bert)
